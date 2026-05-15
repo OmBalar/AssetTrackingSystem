@@ -58,12 +58,12 @@ function getToken(cfg: ClientConfig): string | null {
   return null;
 }
 
-async function request<T>(
+async function exchangeJson(
   method: "GET" | "POST",
   path: string,
   cfg: ClientConfig,
   body?: unknown,
-): Promise<T> {
+): Promise<{ status: number; json: unknown }> {
   const url = `${getBaseUrl(cfg)}${path}`;
   const fetchImpl = cfg.fetchImpl ?? fetch;
   const token = getToken(cfg);
@@ -85,20 +85,34 @@ async function request<T>(
     cache: "no-store",
   });
 
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) return { status: res.status, json: null };
 
   const text = await res.text();
   const json: unknown = text ? JSON.parse(text) : null;
+  return { status: res.status, json };
+}
 
-  if (!res.ok) {
+async function request<T>(
+  method: "GET" | "POST",
+  path: string,
+  cfg: ClientConfig,
+  body?: unknown,
+): Promise<T> {
+  const { status, json } = await exchangeJson(method, path, cfg, body);
+
+  if (status === 204) return undefined as T;
+
+  if (status < 200 || status >= 300) {
     const errBody = json as ApiErrorBody | null;
     const code = errBody?.error?.code ?? "unknown_error";
-    const message = errBody?.error?.message ?? `HTTP ${res.status}`;
-    throw new ApiError(res.status, code, message, errBody?.error?.details);
+    const message = errBody?.error?.message ?? `HTTP ${status}`;
+    throw new ApiError(status, code, message, errBody?.error?.details);
   }
 
   return json as T;
 }
+
+export type ReceiveScanResult = { asset: Asset; created: boolean };
 
 async function rawGet<T>(absoluteUrl: string, cfg: ClientConfig): Promise<T> {
   const fetchImpl = cfg.fetchImpl ?? fetch;
@@ -137,8 +151,25 @@ export function createApiClient(cfg: ClientConfig = {}) {
         request<Event[]>("GET", `/assets/${tag}/events`, cfg),
     },
     scans: {
-      receive: (input: ReceiveScanInput) =>
-        request<Asset>("POST", "/scans/receive", cfg, input),
+      receive: async (input: ReceiveScanInput): Promise<ReceiveScanResult> => {
+        const { status, json } = await exchangeJson(
+          "POST",
+          "/scans/receive",
+          cfg,
+          input,
+        );
+
+        if (status < 200 || status >= 300) {
+          const errBody = json as ApiErrorBody | null;
+          const code = errBody?.error?.code ?? "unknown_error";
+          const message =
+            errBody?.error?.message ?? `Upstream returned HTTP ${status}`;
+          throw new ApiError(status, code, message, errBody?.error?.details);
+        }
+
+        const asset = json as Asset;
+        return { asset, created: status === 201 };
+      },
       store: (input: StoreScanInput) =>
         request<Asset>("POST", "/scans/store", cfg, input),
       deploy: (input: DeployScanInput) =>

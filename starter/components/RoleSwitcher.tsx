@@ -1,20 +1,33 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { getRole, setRole, type Role } from "@/lib/auth";
+import { usePathname, useRouter } from "next/navigation";
+import { useLayoutEffect, useState } from "react";
 
 export function RoleSwitcher() {
+  const router = useRouter();
+  const pathname = usePathname();
   const [role, setRoleState] = useState<Role>("tech");
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // Keep cookie aligned with URL (manual address-bar edits bypass route layout intent).
+    if (pathname.startsWith("/manager")) {
+      setRole("manager");
+    } else if (pathname.startsWith("/tech")) {
+      setRole("tech");
+    }
     setRoleState(getRole());
-  }, []);
+  }, [pathname]);
 
   function handleClick(): void {
     const next: Role = role === "tech" ? "manager" : "tech";
     setRole(next);
     setRoleState(next);
-    window.location.reload();
+    if (next === "manager") {
+      router.push("/manager");
+    } else {
+      router.push("/tech");
+    }
   }
 
   const label =
