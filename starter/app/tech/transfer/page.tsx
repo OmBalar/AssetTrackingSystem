@@ -81,6 +81,7 @@ export default function TechTransferPage() {
           disabled={flow.busy}
           autoFocus={flow.scanFieldAutofocus}
           autoOpenCameraOnStepChange={scanUxMode === "camera"}
+          omitInlineModeControls
           onCameraSessionDismissed={scanUxMode === "camera" ? () => setScanUxMode("keyboard") : undefined}
           label={flow.stepIndex > 0 ? `Asset ${flow.context.assetTag}` : undefined}
           placeholder={ui.placeholder}
@@ -94,7 +95,7 @@ export default function TechTransferPage() {
           onScan={onScan}
         />
 
-        {flow.stepIndex === 0 && !flow.context.assetTag && !flow.busy ? (
+        {!flow.busy ? (
           <button
             type="button"
             onClick={() => {

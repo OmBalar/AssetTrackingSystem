@@ -33,6 +33,11 @@ export type TechScanCaptureProps = Omit<ScanInputProps, "onScan"> & {
   stepLabel?: string;
   /** If set, called when the camera overlay closes (Close, or “Keyboard only”) — e.g. receive flow switches to manual. */
   onCameraSessionDismissed?: () => void;
+  /**
+   * Hide the compact “Use Camera” / “Keyboard only” row. Use when the page supplies its own full-width mode toggle
+   * (e.g. deploy / custody transfer).
+   */
+  omitInlineModeControls?: boolean;
 };
 
 /**
@@ -53,6 +58,7 @@ export function TechScanCapture({
   stepIndex = 0,
   stepLabel,
   onCameraSessionDismissed,
+  omitInlineModeControls = false,
   disabled,
   ...scanInputProps
 }: TechScanCaptureProps) {
@@ -142,6 +148,27 @@ export function TechScanCapture({
           </kbd>
           .
         </p>
+      ) : omitInlineModeControls ? (
+        autoOpenCameraOnStepChange ? (
+          <p className="text-xs leading-snug text-gray-600">
+            <span className="font-medium text-gray-800">Camera mode:</span> the live scanner opens for each step. Use{" "}
+            <span className="font-semibold text-gray-900">Use manual entry instead</span> below to type payloads +{" "}
+            <kbd className="rounded border border-gray-300 bg-gray-100 px-1 font-mono text-[11px] text-gray-800">
+              Enter
+            </kbd>
+            .
+          </p>
+        ) : (
+          <p className="text-xs leading-snug text-gray-600">
+            <span className="font-medium text-gray-800">Keyboard:</span> type the QR payload +{" "}
+            <kbd className="rounded border border-gray-300 bg-gray-100 px-1 font-mono text-[11px] text-gray-800">
+              Enter
+            </kbd>
+            . <span className="font-medium text-gray-800">Camera:</span> use{" "}
+            <span className="font-semibold text-gray-900">Use camera for this flow</span> below — the scanner opens for
+            each step until you switch back.
+          </p>
+        )
       ) : (
         <p className="text-xs leading-snug text-gray-600">
           <span className="font-medium text-gray-800">Keyboard:</span> type the QR payload +{" "}
@@ -193,7 +220,7 @@ export function TechScanCapture({
         {...scanInputProps}
       />
 
-      {hideCameraOption ? null : (
+      {hideCameraOption || omitInlineModeControls ? null : (
         <TechScanModeControls
           cameraOverlayOpen={cameraOverlayOpen}
           disabled={disabled}

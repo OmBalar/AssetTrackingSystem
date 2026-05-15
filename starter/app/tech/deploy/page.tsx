@@ -63,6 +63,7 @@ export default function TechDeployPage() {
           disabled={flow.busy}
           autoFocus={flow.scanFieldAutofocus}
           autoOpenCameraOnStepChange={scanUxMode === "camera"}
+          omitInlineModeControls
           onCameraSessionDismissed={scanUxMode === "camera" ? () => setScanUxMode("keyboard") : undefined}
           label={
             flow.currentStep.type === "deploy_site"
@@ -82,7 +83,7 @@ export default function TechDeployPage() {
           onScan={onScan}
         />
 
-        {flow.stepIndex === 0 && !flow.context.assetTag && !flow.busy ? (
+        {!flow.busy ? (
           <button
             type="button"
             onClick={() => {
