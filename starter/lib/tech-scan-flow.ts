@@ -86,8 +86,8 @@ export type ScanFlowDefinition = {
   onComplete: (ctx: TechScanFlowContext) => Promise<ScanFlowCompleteResult>;
 };
 
-/** Keyboard wedge: shorter pause between steps. */
-const KEYBOARD_STEP_ACK_MS = 1500;
+/** Keyboard wedge: pause between steps before the ack clears. */
+const KEYBOARD_STEP_ACK_MS = 100;
 
 export type UseScanFlowOptions = {
   onCompleteSuccess?: (payload?: unknown) => void;

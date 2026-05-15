@@ -31,6 +31,49 @@ function isLikelyFetchNetworkError(err: unknown): boolean {
   );
 }
 
+type ReconcileErrorPayload = {
+  error?: { code?: string; message?: string };
+};
+
+/** Prefer upstream `error.code` over opaque message strings. */
+function messageForReconcileHttpError(status: number, json: unknown): string {
+  const code =
+    typeof json === "object" &&
+    json !== null &&
+    "error" in json &&
+    typeof (json as ReconcileErrorPayload).error?.code === "string"
+      ? (json as ReconcileErrorPayload).error!.code
+      : "";
+
+  if (status === 429) {
+    return "Rate limited — wait a few seconds, then refresh.";
+  }
+
+  switch (code) {
+    case "missing_token":
+      return "Server is missing API_TOKEN — add it to starter/.env and restart Next.js.";
+    case "missing_configuration":
+      return "Server configuration error — check API_TOKEN and API_BASE_URL in starter/.env.";
+    case "reconcile_failed":
+      return "The reconciliation job failed — retry shortly.";
+    case "invalid_query":
+      return "Invalid query to the asset API — contact engineering.";
+    case "unknown_error":
+      return status >= 500
+        ? "Upstream server error — retry shortly."
+        : `Could not load the report (HTTP ${status}).`;
+    default:
+      if (code) {
+        return status >= 500
+          ? `Report unavailable (${code}) — retry shortly.`
+          : `Could not load the report (${code}). Retry or escalate if this persists.`;
+      }
+      return status >= 500
+        ? "Upstream server error — retry shortly."
+        : `Could not load the report (HTTP ${status}).`;
+  }
+}
+
 const SECTION_COPY: Record<
   Exclude<ReconciliationCategory, "healthy">,
   { title: string; blurb: string; whyItMatters: string }
@@ -375,14 +418,7 @@ export function ManagerReconcileDashboard() {
       .then(async (res) => {
         const json: unknown = await res.json();
         if (!res.ok) {
-          const msg =
-            typeof json === "object" &&
-            json !== null &&
-            "error" in json &&
-            typeof (json as { error?: { message?: string } }).error?.message === "string"
-              ? (json as { error: { message: string } }).error.message
-              : `We could not read the report (HTTP ${res.status}).`;
-          throw new Error(msg);
+          throw new Error(messageForReconcileHttpError(res.status, json));
         }
         return json as ReconciliationApiResponse;
       })

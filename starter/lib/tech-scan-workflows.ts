@@ -21,12 +21,7 @@ import {
   SCAN_NETWORK_DOWN,
 } from "@/lib/scan-messages";
 import type { Asset, Location } from "@/lib/types";
-import {
-  compactLocation,
-  facilitiesRackPath,
-  humanizeState,
-  isDeployPlaceable,
-} from "@/lib/tech-scan-helpers";
+import { compactLocation, humanizeState, isDeployPlaceable } from "@/lib/tech-scan-helpers";
 import type {
   ScanFlowCompleteResult,
   ScanFlowDefinition,
@@ -430,19 +425,28 @@ function transferBlockedReason(asset: Asset): string | null {
   return null;
 }
 
-async function syncFacilitiesFinanceAfterDeploy(asset_tag: string, location: Location): Promise<void> {
-  const rackPath = facilitiesRackPath(location);
-  await api.mock.updateFacilities({
-    tagged_id: asset_tag,
-    rack_location: rackPath,
+type DeployMocksErrorBody = {
+  error?: { code?: string; message?: string; details?: Record<string, unknown> };
+};
+
+/** Facilities + finance POSTs run in `app/api/sync/deploy-mocks` so the bearer token never executes in the browser. */
+async function syncDeployMocksViaRoute(asset_tag: string, location: Location): Promise<void> {
+  const res = await fetch("/api/sync/deploy-mocks", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ asset_tag, location }),
   });
-  const capitalizedOn = new Date().toISOString().slice(0, 10);
-  await api.mock.updateFinance({
-    tag: asset_tag,
-    site: location.site.trim(),
-    status: "capitalized",
-    capitalized_on: capitalizedOn,
-  });
+  let json: DeployMocksErrorBody | null = null;
+  try {
+    json = (await res.json()) as DeployMocksErrorBody;
+  } catch {
+    json = null;
+  }
+  if (!res.ok) {
+    const code = json?.error?.code ?? "unknown_error";
+    const message = json?.error?.message ?? `HTTP ${res.status}`;
+    throw new ApiError(res.status, code, message, json?.error?.details);
+  }
 }
 
 /** Store: camera = tag + one compact location QR. Manual = tag + site, room, rack (one segment per step — no slashes). */
@@ -590,6 +594,7 @@ export function createStoreWorkflowDefinition(mode: StoreWorkflowMode): ScanFlow
     steps,
     async onComplete(ctx): Promise<ScanFlowCompleteResult> {
       if (!ctx.location) return { ok: false, message: "Missing location." };
+      const priorState = ctx.asset?.state;
       try {
         const updated = await api.scans.store({
           asset_tag: ctx.assetTag,
@@ -597,6 +602,26 @@ export function createStoreWorkflowDefinition(mode: StoreWorkflowMode): ScanFlow
           user_id: getCurrentUserId(),
           scan_payload: `STORE|${ctx.assetTag}|${compactLocation(ctx.location)}`,
         });
+        if (priorState === "in_service") {
+          try {
+            await api.mock.updateFacilities({
+              tagged_id: ctx.assetTag,
+              rack_location: null,
+            });
+          } catch (mockErr) {
+            const locText = compactLocation(updated.location);
+            let extra = "";
+            if (mockErr instanceof ApiError) {
+              extra = formatApiErrorForUser(mockErr);
+            }
+            return {
+              ok: false,
+              message: extra
+                ? `${updated.asset_tag} stored @ ${locText}; facilities derack failed: ${extra}`
+                : `${updated.asset_tag} stored @ ${locText}; facilities derack failed. Retry or tell ops.`,
+            };
+          }
+        }
         return { ok: true, payload: updated };
       } catch (e) {
         if (e instanceof ApiError) {
@@ -766,7 +791,7 @@ export function createDeployWorkflowDefinition(): ScanFlowDefinition {
           scan_payload: `DEPLOY|${ctx.assetTag}|${compactLocation(loc)}`,
         });
         try {
-          await syncFacilitiesFinanceAfterDeploy(deployed.asset_tag, loc);
+          await syncDeployMocksViaRoute(deployed.asset_tag, loc);
         } catch (mockErr) {
           const locText = compactLocation(deployed.location);
           let extra = "";

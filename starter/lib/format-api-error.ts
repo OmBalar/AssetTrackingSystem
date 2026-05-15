@@ -8,6 +8,23 @@ function humanizeState(state: string): string {
   return state.replace(/_/g, " ");
 }
 
+/** Uses API `details.location` from incomplete_deploy_location (and similar). */
+function missingDeployFieldLabels(details: Record<string, unknown> | undefined): string | null {
+  const loc = details?.location;
+  if (!loc || typeof loc !== "object") return null;
+  const o = loc as Record<string, unknown>;
+  const site = typeof o.site === "string" ? o.site.trim() : "";
+  const room = o.room == null ? "" : String(o.room).trim();
+  const rack = o.rack == null ? "" : String(o.rack).trim();
+  const ru = o.ru == null ? "" : String(o.ru).trim();
+  const missing: string[] = [];
+  if (!site) missing.push("site");
+  if (!room) missing.push("room");
+  if (!rack) missing.push("rack");
+  if (!ru) missing.push("RU");
+  return missing.length ? missing.join(", ") : null;
+}
+
 export function formatApiErrorForUser(err: ApiError): string {
   if (err.code === "and_match_failed") {
     const expected = err.details?.expected_serial;
@@ -35,7 +52,11 @@ export function formatApiErrorForUser(err: ApiError): string {
     return "That action doesn't apply to this asset right now.";
   }
   if (err.code === "incomplete_deploy_location") {
-    return "Need site, room, rack, and RU — scan all four in order.";
+    const fields = missingDeployFieldLabels(err.details);
+    if (fields) {
+      return `Deploy location incomplete — missing: ${fields}. Scan the missing label(s), then try again.`;
+    }
+    return "Deploy location incomplete — need site, room, rack, and RU. Scan all four in order.";
   }
   if (err.code === "same_custodian") {
     const cust = err.details?.custodian;
