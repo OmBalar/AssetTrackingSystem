@@ -9,6 +9,14 @@ import { NextRequest, NextResponse } from "next/server";
 
 const UPSTREAM = (process.env.API_BASE_URL ?? "http://localhost:8080/v1").replace(/\/$/, "");
 
+/** `GET /health` from api-reference.md sits next to `/v1`, not under it. */
+function upstreamBaseForPath(path: string): string {
+  if (path === "health" || path.startsWith("health/")) {
+    return UPSTREAM.replace(/\/v1$/, "");
+  }
+  return UPSTREAM;
+}
+
 function missingToken(): NextResponse {
   return NextResponse.json(
     {
@@ -28,7 +36,7 @@ async function forward(req: NextRequest, segments: string[]): Promise<Response> 
 
   const path = segments.join("/");
   const search = req.nextUrl.search ?? "";
-  const url = `${UPSTREAM}/${path}${search}`;
+  const url = `${upstreamBaseForPath(path)}/${path}${search}`;
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,

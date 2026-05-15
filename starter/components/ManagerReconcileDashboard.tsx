@@ -18,6 +18,19 @@ const CATEGORY_ORDER: ReconciliationCategory[] = [
   "healthy",
 ];
 
+function isLikelyFetchNetworkError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const m = err.message.toLowerCase();
+  if (err instanceof TypeError && (m.includes("fetch") || m.includes("network"))) return true;
+  return (
+    m === "fetch failed" ||
+    m === "failed to fetch" ||
+    m.includes("networkerror") ||
+    m === "network request failed" ||
+    m === "load failed"
+  );
+}
+
 const SECTION_COPY: Record<
   Exclude<ReconciliationCategory, "healthy">,
   { title: string; blurb: string; whyItMatters: string }
@@ -341,6 +354,7 @@ export function ManagerReconcileDashboard() {
   const [data, setData] = useState<ReconciliationApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showConfigHint, setShowConfigHint] = useState(true);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(() => new Set());
 
   const toggle = useCallback((tag: string) => {
@@ -356,6 +370,7 @@ export function ManagerReconcileDashboard() {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setShowConfigHint(true);
     fetch("/api/reconcile", { cache: "no-store" })
       .then(async (res) => {
         const json: unknown = await res.json();
@@ -379,7 +394,11 @@ export function ManagerReconcileDashboard() {
       })
       .catch((err) => {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : "The reconciliation snapshot did not load.");
+          if (isLikelyFetchNetworkError(err)) {
+            setShowConfigHint(false);
+          } else {
+            setError(err instanceof Error ? err.message : "The reconciliation snapshot did not load.");
+          }
           setData(null);
           setLoading(false);
         }
@@ -414,13 +433,19 @@ export function ManagerReconcileDashboard() {
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
         <p className="font-medium">This report is not available right now</p>
-        <p className="mt-1 text-amber-900/95">{error ?? "Something went wrong while loading."}</p>
-        <p className="mt-2 text-xs text-amber-900/90">
-          Most often this is a missing server token or the upstream API not running. Set{" "}
-          <code className="rounded bg-amber-100/80 px-1">API_TOKEN</code> in{" "}
-          <code className="rounded bg-amber-100/80 px-1">starter/.env</code>, restart Next.js, and confirm the
-          asset API is up.
-        </p>
+        <p className="mt-1 text-amber-900/95">{error ?? ''}</p>
+        {showConfigHint ? (
+          <p className="mt-2 text-xs text-amber-900/90">
+            Most often this is a missing server token or the upstream API not running. Set{" "}
+            <code className="rounded bg-amber-100/80 px-1">API_TOKEN</code> in{" "}
+            <code className="rounded bg-amber-100/80 px-1">starter/.env</code>, restart Next.js, and confirm
+            the asset API is up.
+          </p>
+        ) : (
+          <p className="mt-2 text-xs text-amber-900/90">
+            The server returned an error. Try again shortly. If the problem persists, escalate to someone on-call.
+          </p>
+        )}
       </div>
     );
   }
@@ -439,7 +464,7 @@ export function ManagerReconcileDashboard() {
           emphasize={summary.needs_review > 0}
         />
         <SummaryCard label="Straightforward fixes" count={summary.drift} />
-        <SummaryCard label="Normal hand-offs" count={summary.expected_difference} />
+        <SummaryCard label="Expected Differences" count={summary.expected_difference} />
         <SummaryCard label="All clear" count={summary.healthy} />
       </div>
 

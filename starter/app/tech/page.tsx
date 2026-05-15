@@ -2,11 +2,11 @@ import Link from "next/link";
 
 export default function TechLandingPage() {
   return (
-    <div className="space-y-8 max-w-2xl">
-      <div>
+    <div className="mx-auto max-w-2xl space-y-8">
+      <div className="text-center">
         <h1 className="text-2xl font-bold">Tech — field workflows</h1>
       </div>
-      <nav className="grid gap-4 sm:grid-cols-2 max-w-xl" aria-label="Technician workflows">
+      <nav className="mx-auto grid max-w-xl gap-4 sm:grid-cols-2" aria-label="Technician workflows">
         <WorkflowButton href="/tech/receive" title="Receive" />
         <WorkflowButton href="/tech/store" title="Store" />
         <WorkflowButton href="/tech/deploy" title="Deploy" />

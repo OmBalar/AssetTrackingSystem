@@ -1,248 +1,128 @@
 "use client";
 
-import { ScanInput } from "@/components/ScanInput";
-import { api, ApiError } from "@/lib/api-client";
+import { TechScanCapture } from "@/components/TechScanCapture";
+import { TechScanStepHeader } from "@/components/TechScanStepHeader";
+import { ScanLoadingLine, ScanWorkflowStatus } from "@/components/ScanWorkflowStatus";
+import { useAutoDismiss } from "@/hooks/useAutoDismiss";
 import { getCurrentUserId } from "@/lib/auth";
-import { formatApiErrorForUser } from "@/lib/format-api-error";
-import type { Asset, Location } from "@/lib/types";
-import { useCallback, useState } from "react";
+import type { ScanSource } from "@/lib/scan-flow";
+import { humanizeState, compactLocation } from "@/lib/tech-scan-helpers";
+import { scanFlowProgress, useScanFlow } from "@/lib/tech-scan-flow";
+import { createTransferWorkflowDefinition } from "@/lib/tech-scan-workflows";
+import type { Asset } from "@/lib/types";
+import { useCallback, useMemo, useState } from "react";
 
-const TAG_PATTERN = /^C\d{7}$/;
-
-type Step = "tag" | "badge";
-
-function humanizeState(state: string): string {
-  return state.replace(/_/g, " ");
-}
-
-function compactLocation(loc: Location): string {
-  const segments = [
-    loc.site,
-    loc.room ?? undefined,
-    loc.row ?? undefined,
-    loc.rack ?? undefined,
-    loc.ru ?? undefined,
-  ].filter((s): s is string => Boolean(s?.trim()));
-  return segments.join(" / ");
-}
-
-function transferBlockedReason(asset: Asset): string | null {
-  if (asset.state === "disposed" || asset.state === "unreceived") {
-    return `This asset is ${humanizeState(asset.state)}, so custody can't be transferred here. Pick a live unit (received, stored, in service, etc.).`;
-  }
-  return null;
-}
+type TransferScanUxMode = "keyboard" | "camera";
 
 export default function TechTransferPage() {
-  const [step, setStep] = useState<Step>("tag");
-  const [scanNonce, setScanNonce] = useState(0);
-  const [assetTag, setAssetTag] = useState("");
-  const [asset, setAsset] = useState<Asset | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
-  const [tagLookupLoading, setTagLookupLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [scanUxMode, setScanUxMode] = useState<TransferScanUxMode>("keyboard");
+
+  useAutoDismiss(successBanner, setSuccessBanner, 6500);
 
   const me = getCurrentUserId();
-  const busy = submitting || tagLookupLoading;
+  const workflow = useMemo(() => createTransferWorkflowDefinition(me), [me]);
 
-  const bumpScanInput = useCallback(() => setScanNonce((n) => n + 1), []);
-
-  const resetFlow = useCallback(() => {
-    setStep("tag");
-    setAssetTag("");
-    setAsset(null);
-    setError(null);
-    bumpScanInput();
-  }, [bumpScanInput]);
-
-  const onTagScan = useCallback(
-    async (value: string) => {
-      const tag = value.trim().toUpperCase();
-      setSuccessBanner(null);
-      setError(null);
-
-      if (!TAG_PATTERN.test(tag)) {
-        setError(
-          "That does not look like an asset tag. Expect C followed by seven digits (e.g. C0009001).",
-        );
-        bumpScanInput();
-        return;
-      }
-
-      setTagLookupLoading(true);
-      try {
-        const fetched = await api.assets.get(tag);
-        const blocked = transferBlockedReason(fetched);
-        if (blocked) {
-          setError(blocked);
-          bumpScanInput();
-          return;
-        }
-        setAssetTag(tag);
-        setAsset(fetched);
-        setStep("badge");
-        bumpScanInput();
-      } catch (e) {
-        if (e instanceof ApiError) {
-          setError(formatApiErrorForUser(e));
-        } else {
-          setError(
-            "Can't reach the server to verify this tag. Check your connection and try again.",
-          );
-        }
-        bumpScanInput();
-      } finally {
-        setTagLookupLoading(false);
-      }
+  const flow = useScanFlow(workflow, {
+    onCompleteSuccess: (payload) => {
+      const updated = payload as Asset;
+      setSuccessBanner(
+        `Custody → ${updated.custodian} · ${updated.asset_tag} · ${humanizeState(updated.state)} @ ${compactLocation(updated.location)}`,
+      );
     },
-    [bumpScanInput],
-  );
+  });
 
-  const submitTransfer = useCallback(
-    async (toCustodian: string) => {
-      setError(null);
-      if (!toCustodian) {
-        setError("Badge scan was empty. Have the receiving tech scan their ID, then Enter.");
-        bumpScanInput();
-        return;
-      }
+  const { current: stepNum, total: stepTotal } = scanFlowProgress(flow.stepIndex, flow.stepTotal);
+  const ui = flow.currentStep.ui;
 
-      if (!asset) {
-        setError("No asset loaded. Start over and scan the tag first.");
-        bumpScanInput();
-        return;
-      }
-
-      if (toCustodian === asset.custodian) {
-        setError(
-          `That badge is already the custodian on record (${asset.custodian}). Scan the person who is taking the handoff from you.`,
-        );
-        bumpScanInput();
-        return;
-      }
-
-      setSubmitting(true);
-      try {
-        const updated = await api.scans.transfer({
-          asset_tag: assetTag,
-          to_custodian: toCustodian,
-          user_id: me,
-          scan_payload: `TRANSFER|${assetTag}|${toCustodian}`,
-        });
-        setSuccessBanner(
-          `Custody for ${updated.asset_tag} is now ${updated.custodian}. State stayed ${humanizeState(updated.state)} at ${compactLocation(updated.location)}.`,
-        );
-        resetFlow();
-      } catch (e) {
-        if (e instanceof ApiError) {
-          setError(formatApiErrorForUser(e));
-        } else {
-          setError("Could not reach the server. Check your connection and try again.");
-        }
-        bumpScanInput();
-      } finally {
-        setSubmitting(false);
-      }
-    },
-    [asset, assetTag, bumpScanInput, me, resetFlow],
-  );
-
-  const onBadgeScan = useCallback(
-    (value: string) => {
-      const badge = value.trim();
-      if (!badge) return;
-      void submitTransfer(badge);
-    },
-    [submitTransfer],
+  const onScan = useCallback(
+    (value: string, meta?: { source: ScanSource }) =>
+      flow.ingestScan(value, meta?.source ?? "keyboard"),
+    [flow.ingestScan],
   );
 
   return (
-    <div className="max-w-lg mx-auto space-y-6">
+    <div className="mx-auto max-w-lg space-y-6 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
       <h1 className="text-2xl font-bold text-gray-900">Custody handoff</h1>
 
-      {successBanner ? (
-        <div
-          className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-green-950 text-sm"
-          role="status"
-        >
-          {successBanner}
-        </div>
-      ) : null}
+      <ScanWorkflowStatus success={successBanner} error={flow.error} />
 
-      {error ? (
-        <div
-          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950 text-sm"
-          role="alert"
-        >
-          {error}
-        </div>
-      ) : null}
+      <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm" aria-busy={flow.busy}>
+        <TechScanStepHeader current={stepNum} total={stepTotal} label={ui.stepLabel} />
 
-      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-4" aria-busy={busy}>
-        <h2 className="text-lg font-semibold text-gray-900">
-          {step === "tag" ? "1 — Scan asset tag" : "2 — Scan receiving badge"}
-        </h2>
+        <p className="text-sm leading-snug text-gray-700">{ui.instruction}</p>
 
-        {asset && step === "badge" ? (
-          <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm text-gray-800 space-y-1">
+        {flow.context.asset && flow.stepIndex > 0 ? (
+          <div className="space-y-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
             <div>
-              <span className="font-medium">{asset.asset_tag}</span>
+              <span className="font-medium">{flow.context.asset.asset_tag}</span>
               {" · "}
-              <span className="font-semibold">{humanizeState(asset.state)}</span>
+              <span className="font-semibold">{humanizeState(flow.context.asset.state)}</span>
             </div>
             <div className="text-xs text-gray-600">
               <span className="font-medium text-gray-700">Custodian now:</span>{" "}
-              <span className="font-mono">{asset.custodian}</span>
+              <span className="font-mono">{flow.context.asset.custodian}</span>
             </div>
             <div className="text-xs text-gray-600">
               <span className="font-medium text-gray-700">Location:</span>{" "}
-              <span className="font-mono">{compactLocation(asset.location)}</span>
+              <span className="font-mono">{compactLocation(flow.context.asset.location)}</span>
             </div>
-            {me !== asset.custodian ? (
-              <p className="text-xs text-amber-900 bg-amber-50 border border-amber-100 rounded px-2 py-1.5 mt-2">
-                Ops records <span className="font-mono">{asset.custodian}</span> as custodian, but
-                you&apos;re logged in as <span className="font-mono">{me}</span>. The handoff event
-                will still list you as the operator running this scan.
+            {me !== flow.context.asset.custodian ? (
+              <p className="mt-2 rounded border border-amber-100 bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
+                Custodian on file is <span className="font-mono">{flow.context.asset.custodian}</span>;
+                you&apos;re <span className="font-mono">{me}</span> (operator is still you for this scan).
               </p>
             ) : null}
           </div>
         ) : null}
 
-        <ScanInput
-          key={`${step}-${scanNonce}`}
-          disabled={busy}
-          label={step === "badge" ? `Asset ${assetTag}` : undefined}
-          placeholder={
-            step === "tag"
-              ? "Scan asset tag, then Enter…"
-              : "Scan receiver user id (e.g. tech-mike), then Enter…"
-          }
-          onScan={step === "tag" ? (v) => void onTagScan(v) : onBadgeScan}
+        <TechScanCapture
+          scanInputKey={flow.inputEpoch}
+          disabled={flow.busy}
+          autoFocus={flow.scanFieldAutofocus}
+          autoOpenCameraOnStepChange={scanUxMode === "camera"}
+          onCameraSessionDismissed={scanUxMode === "camera" ? () => setScanUxMode("keyboard") : undefined}
+          label={flow.stepIndex > 0 ? `Asset ${flow.context.assetTag}` : undefined}
+          placeholder={ui.placeholder}
+          cameraModalTitle={ui.cameraModalTitle}
+          cameraInstruction={ui.instruction}
+          scanStepAck={flow.scanStepAck}
+          workflowError={flow.error}
+          workflowSuccessMessage={successBanner}
+          stepIndex={flow.stepIndex}
+          stepLabel={ui.stepLabel}
+          onScan={onScan}
         />
 
-        {step === "tag" && tagLookupLoading ? (
-          <p className="text-sm text-gray-500" aria-live="polite">
-            Loading asset from operations…
-          </p>
-        ) : null}
-
-        {step !== "tag" && !busy ? (
+        {flow.stepIndex === 0 && !flow.context.assetTag && !flow.busy ? (
           <button
             type="button"
-            onClick={resetFlow}
-            className="text-sm text-gray-600 underline hover:text-gray-900"
+            onClick={() => {
+              setSuccessBanner(null);
+              setScanUxMode((m) => (m === "keyboard" ? "camera" : "keyboard"));
+            }}
+            className="min-h-[48px] w-full touch-manipulation rounded-lg border-2 border-gray-300 bg-white px-4 py-3 text-base font-semibold text-gray-900 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
+          >
+            {scanUxMode === "keyboard" ? "Use camera for this flow" : "Use manual entry instead"}
+          </button>
+        ) : null}
+
+        {flow.lookupBusy && flow.stepIndex === 0 ? <ScanLoadingLine label="Looking up asset…" /> : null}
+        {flow.submitBusy ? <ScanLoadingLine label="Recording handoff…" /> : null}
+
+        {flow.stepIndex > 0 && !flow.busy ? (
+          <button
+            type="button"
+            onClick={() => {
+              setSuccessBanner(null);
+              flow.reset();
+            }}
+            className="min-h-[44px] touch-manipulation text-base text-gray-600 underline hover:text-gray-900"
           >
             Start over
           </button>
         ) : null}
       </section>
-
-      {step === "badge" ? (
-        <p className="text-xs text-gray-500">
-          <span className="font-medium text-gray-700">Tag:</span> {assetTag}
-        </p>
-      ) : null}
     </div>
   );
 }

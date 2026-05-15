@@ -3,8 +3,10 @@
 import { api, ApiError } from "@/lib/api-client";
 import { compactLocation, formatDateTimeShort, labelTitleCase } from "@/lib/format-display";
 import { formatApiErrorForUser } from "@/lib/format-api-error";
+import { sanitizeManagerListQueryString } from "@/lib/manager-list-params";
 import type { Asset, Event as AssetEvent } from "@/lib/types";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
 function summarizeStateTransition(ev: AssetEvent): string {
@@ -134,7 +136,10 @@ export function ManagerAssetDetail({ routeTag }: { routeTag: string }) {
           <DetailPair label="Model" value={asset.model} />
           <DetailPair label="Serial" value={<span className="font-mono">{asset.serial}</span>} />
           <DetailPair label="Asset class" value={labelTitleCase(asset.asset_class)} />
-          <DetailPair label="Location" value={compactLocation(asset.location)} />
+          <DetailPair
+            label="Current location"
+            value={compactLocation(asset.location)}
+          />
           <DetailPair label="Custodian" value={asset.custodian} />
           <DetailPair label="Created" value={formatDateTimeShort(asset.created_at)} />
           <DetailPair label="Procurement note" value={asset.procurement_note ?? "—"} muted />
@@ -227,9 +232,14 @@ export function ManagerAssetDetail({ routeTag }: { routeTag: string }) {
 }
 
 function BackLink() {
+  const searchParams = useSearchParams();
+  const rawBack = searchParams.get("back");
+  const safe = sanitizeManagerListQueryString(rawBack);
+  const href = safe ? `/manager?${safe}` : "/manager";
+
   return (
     <Link
-      href="/manager"
+      href={href}
       className="inline-flex text-sm font-medium text-blue-700 hover:text-blue-900 hover:underline"
     >
       ← All assets

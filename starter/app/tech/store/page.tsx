@@ -1,320 +1,174 @@
 "use client";
 
-import { ScanInput } from "@/components/ScanInput";
-import { api, ApiError } from "@/lib/api-client";
-import { getCurrentUserId } from "@/lib/auth";
-import { formatApiErrorForUser } from "@/lib/format-api-error";
-import type { Asset, Location } from "@/lib/types";
-import { useCallback, useState } from "react";
+import { TechScanCapture } from "@/components/TechScanCapture";
+import { TechScanStepHeader } from "@/components/TechScanStepHeader";
+import { ScanLoadingLine, ScanWorkflowStatus } from "@/components/ScanWorkflowStatus";
+import { useAutoDismiss } from "@/hooks/useAutoDismiss";
+import type { ScanSource } from "@/lib/scan-flow";
+import { humanizeState, compactLocation } from "@/lib/tech-scan-helpers";
+import { scanFlowProgress, useScanFlow } from "@/lib/tech-scan-flow";
+import { createStoreWorkflowDefinition, type StoreWorkflowMode } from "@/lib/tech-scan-workflows";
+import type { Asset } from "@/lib/types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-const TAG_PATTERN = /^C\d{7}$/;
+function StoreFlowBody({
+  mode,
+  onToggleInputMethod,
+  successBanner,
+  setSuccessBanner,
+}: {
+  mode: StoreWorkflowMode;
+  onToggleInputMethod: () => void;
+  successBanner: string | null;
+  setSuccessBanner: (v: string | null) => void;
+}) {
+  const workflow = useMemo(() => createStoreWorkflowDefinition(mode), [mode]);
 
-type Step = "tag" | "site" | "room" | "rack";
-
-function humanizeState(state: string): string {
-  return state.replace(/_/g, " ");
-}
-
-function compactLocation(loc: Location): string {
-  const segments = [
-    loc.site,
-    loc.room ?? undefined,
-    loc.row ?? undefined,
-    loc.rack ?? undefined,
-    loc.ru ?? undefined,
-  ].filter((s): s is string => Boolean(s?.trim()));
-  return segments.join(" / ");
-}
-
-function storeBlockedReason(asset: Asset): string | null {
-  if (asset.state === "received" || asset.state === "in_service") return null;
-  return `This asset is ${humanizeState(asset.state)}, so it can't move to storage with this scan — only incoming (received) or rack-mounted units (in service). If that doesn't match what's in front of you, rescan the tag.`;
-}
-
-export default function TechStorePage() {
-  const [step, setStep] = useState<Step>("tag");
-  const [scanNonce, setScanNonce] = useState(0);
-  const [assetTag, setAssetTag] = useState("");
-  const [asset, setAsset] = useState<Asset | null>(null);
-  const [site, setSite] = useState("");
-  const [room, setRoom] = useState("");
-  const [rack, setRack] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [successBanner, setSuccessBanner] = useState<string | null>(null);
-  const [tagLookupLoading, setTagLookupLoading] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-
-  const busy = submitting || tagLookupLoading;
-
-  const bumpScanInput = useCallback(() => setScanNonce((n) => n + 1), []);
-
-  const resetFlow = useCallback(() => {
-    setStep("tag");
-    setAssetTag("");
-    setAsset(null);
-    setSite("");
-    setRoom("");
-    setRack("");
-    setError(null);
-    bumpScanInput();
-  }, [bumpScanInput]);
-
-  const onTagScan = useCallback(
-    async (value: string) => {
-      const tag = value.trim().toUpperCase();
-      setSuccessBanner(null);
-      setError(null);
-
-      if (!TAG_PATTERN.test(tag)) {
-        setError(
-          "That does not look like an asset tag. Expect C followed by seven digits (e.g. C0009001).",
-        );
-        bumpScanInput();
-        return;
-      }
-
-      setTagLookupLoading(true);
-      try {
-        const fetched = await api.assets.get(tag);
-        const blocked = storeBlockedReason(fetched);
-        if (blocked) {
-          setError(blocked);
-          bumpScanInput();
-          return;
-        }
-        setAssetTag(tag);
-        setAsset(fetched);
-        setSite("");
-        setRoom("");
-        setRack("");
-        setStep("site");
-        bumpScanInput();
-      } catch (e) {
-        if (e instanceof ApiError) {
-          setError(formatApiErrorForUser(e));
-        } else {
-          setError("Can't reach the server to verify this tag. Check your connection and try again.");
-        }
-        bumpScanInput();
-      } finally {
-        setTagLookupLoading(false);
-      }
+  const flow = useScanFlow(workflow, {
+    onCompleteSuccess: (payload) => {
+      const updated = payload as Asset;
+      const locText = compactLocation(updated.location);
+      setSuccessBanner(`Stored ${updated.asset_tag} — ${humanizeState(updated.state)} @ ${locText}`);
     },
-    [bumpScanInput],
+  });
+
+  const prevModeRef = useRef(mode);
+  useEffect(() => {
+    if (prevModeRef.current === mode) return;
+    prevModeRef.current = mode;
+    setSuccessBanner(null);
+    flow.reset();
+  }, [mode, flow.reset, setSuccessBanner]);
+
+  const { current: stepNum, total: stepTotal } = scanFlowProgress(flow.stepIndex, flow.stepTotal);
+  const ui = flow.currentStep.ui;
+
+  const onScan = useCallback(
+    (value: string, meta?: { source: ScanSource }) =>
+      flow.ingestScan(value, meta?.source ?? "keyboard"),
+    [flow.ingestScan],
   );
 
-  const onSiteScan = useCallback(
-    (value: string) => {
-      const s = value.trim();
-      setError(null);
-      if (!s) {
-        setError("Site is required. Scan the sticker on your storage aisle or doorway.");
-        bumpScanInput();
-        return;
-      }
-      setSite(s);
-      setStep("room");
-      bumpScanInput();
-    },
-    [bumpScanInput],
-  );
+  const hideCamera = mode === "manual";
+  const autoCamera = mode === "camera";
 
-  const onRoomScan = useCallback(
-    (value: string) => {
-      const s = value.trim();
-      setError(null);
-      if (!s) {
-        setError("Room is required. Scan the storage room barcode.");
-        bumpScanInput();
-        return;
-      }
-      setRoom(s);
-      setStep("rack");
-      bumpScanInput();
-    },
-    [bumpScanInput],
-  );
-
-  const submitStore = useCallback(
-    async (rackTrim: string) => {
-      setError(null);
-      if (!site.trim() || !room.trim() || !rackTrim) {
-        setError("Storage location incomplete. Scan site, room, and shelf or pad row.");
-        bumpScanInput();
-        return;
-      }
-
-      const location: Location = {
-        site: site.trim(),
-        room: room.trim(),
-        row: null,
-        rack: rackTrim,
-        ru: null,
-      };
-
-      setSubmitting(true);
-      try {
-        const updated = await api.scans.store({
-          asset_tag: assetTag,
-          location,
-          user_id: getCurrentUserId(),
-          scan_payload: `STORE|${assetTag}|${compactLocation(location)}`,
-        });
-        const locText = compactLocation(updated.location);
-        setSuccessBanner(
-          `${updated.asset_tag} is now stored (${humanizeState(updated.state)}) at ${locText}.`,
-        );
-        resetFlow();
-      } catch (e) {
-        if (e instanceof ApiError) {
-          setError(formatApiErrorForUser(e));
-        } else {
-          setError("Could not reach the server. Check your connection and try again.");
-        }
-        bumpScanInput();
-      } finally {
-        setSubmitting(false);
-      }
-    },
-    [assetTag, bumpScanInput, resetFlow, room, site],
-  );
-
-  const onRackScan = useCallback(
-    (value: string) => {
-      const rackTrim = value.trim();
-      setError(null);
-      if (!rackTrim) {
-        setError("Scan the shelf row, pallet slot, or storage pad barcode.");
-        bumpScanInput();
-        return;
-      }
-      setRack(rackTrim);
-      void submitStore(rackTrim);
-    },
-    [bumpScanInput, submitStore],
-  );
-
-  const titles: Record<Step, string> = {
-    tag: "1 — Scan asset tag",
-    site: "2 — Scan site",
-    room: "3 — Scan storage room",
-    rack: "4 — Scan shelf / slot / pad",
-  };
+  const onAssetTagStep = flow.stepIndex === 0 && !flow.context.assetTag;
 
   return (
-    <div className="max-w-lg mx-auto space-y-6">
+    <div className="mx-auto max-w-lg space-y-6 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
       <h1 className="text-2xl font-bold text-gray-900">Store — put-away</h1>
 
-      {successBanner ? (
-        <div
-          className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-green-950 text-sm"
-          role="status"
-        >
-          {successBanner}
-        </div>
-      ) : null}
+      <ScanWorkflowStatus success={successBanner} error={flow.error} />
 
-      {error ? (
-        <div
-          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950 text-sm"
-          role="alert"
-        >
-          {error}
-        </div>
-      ) : null}
+      <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm" aria-busy={flow.busy}>
+        <TechScanStepHeader current={stepNum} total={stepTotal} label={ui.stepLabel} />
 
-      <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm space-y-4" aria-busy={busy}>
-        <h2 className="text-lg font-semibold text-gray-900">{titles[step]}</h2>
+        <p className="text-sm leading-snug text-gray-700">{ui.instruction}</p>
 
-        {asset && step !== "tag" ? (
-          <div className="rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm text-gray-800">
-            <span className="font-medium">{asset.asset_tag}</span>
+        {flow.context.asset && flow.stepIndex > 0 ? (
+          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
+            <span className="font-medium">{flow.context.asset.asset_tag}</span>
             {" · state "}
-            <span className="font-semibold">{humanizeState(asset.state)}</span>
-            <span className="text-gray-600 block mt-1 text-xs">
+            <span className="font-semibold">{humanizeState(flow.context.asset.state)}</span>
+            <span className="mt-1 block text-xs text-gray-600">
               Current ops location:{" "}
-              <span className="font-mono">{compactLocation(asset.location)}</span>
+              <span className="font-mono">{compactLocation(flow.context.asset.location)}</span>
             </span>
           </div>
         ) : null}
 
-        {(step === "tag" ||
-          step === "site" ||
-          step === "room" ||
-          step === "rack") && (
-          <>
-            <ScanInput
-              key={`${step}-${scanNonce}`}
-              disabled={busy}
-              label={step === "site" ? `Asset ${assetTag}` : undefined}
-              placeholder={placeholderFor(step)}
-              onScan={
-                step === "tag"
-                  ? (v) => void onTagScan(v)
-                  : step === "site"
-                    ? onSiteScan
-                    : step === "room"
-                      ? onRoomScan
-                      : onRackScan
-              }
-            />
-            {step === "tag" && tagLookupLoading ? (
-              <p className="text-sm text-gray-500" aria-live="polite">
-                Loading asset from operations…
-              </p>
-            ) : null}
-          </>
-        )}
+        {mode === "camera" && flow.stepIndex === 1 ? (
+          <p className="text-sm text-gray-700">
+            One location QR: <span className="font-mono text-gray-900">SITE/ROOM/RACK</span> (slashes only).
+          </p>
+        ) : null}
 
-        {step !== "tag" && !busy ? (
+        {mode === "manual" && flow.stepIndex > 0 && flow.context.assetTag ? (
+          <p className="text-xs text-gray-600">
+            Tag: <span className="font-semibold text-gray-900">{flow.context.assetTag}</span>
+            {flow.context.manualLocSite ? (
+              <>
+                {" "}
+                · Put-away site:{" "}
+                <span className="font-semibold text-gray-900">{flow.context.manualLocSite}</span>
+              </>
+            ) : null}
+            {flow.context.manualLocRoom ? (
+              <>
+                {" "}
+                · Put-away room:{" "}
+                <span className="font-semibold text-gray-900">{flow.context.manualLocRoom}</span>
+              </>
+            ) : null}
+          </p>
+        ) : null}
+
+        <TechScanCapture
+          scanInputKey={flow.inputEpoch}
+          disabled={flow.busy}
+          autoFocus={flow.scanFieldAutofocus}
+          hideCameraOption={hideCamera}
+          autoOpenCameraOnStepChange={autoCamera}
+          onCameraSessionDismissed={mode === "camera" ? onToggleInputMethod : undefined}
+          label={flow.stepIndex > 0 ? `Asset ${flow.context.assetTag}` : undefined}
+          placeholder={ui.placeholder}
+          cameraModalTitle={ui.cameraModalTitle}
+          cameraInstruction={ui.instruction}
+          scanStepAck={flow.scanStepAck}
+          workflowError={flow.error}
+          workflowSuccessMessage={successBanner}
+          stepIndex={flow.stepIndex}
+          stepLabel={ui.stepLabel}
+          onScan={onScan}
+        />
+
+        {flow.lookupBusy && flow.stepIndex === 0 ? <ScanLoadingLine label="Looking up asset…" /> : null}
+        {flow.submitBusy ? <ScanLoadingLine label="Storing…" /> : null}
+
+        {onAssetTagStep && !flow.busy ? (
           <button
             type="button"
-            onClick={resetFlow}
-            className="text-sm text-gray-600 underline hover:text-gray-900"
+            onClick={onToggleInputMethod}
+            className="min-h-[48px] w-full touch-manipulation rounded-lg border-2 border-gray-300 bg-white px-4 py-3 text-base font-semibold text-gray-900 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
+          >
+            {mode === "manual" ? "Use camera for this flow" : "Use manual entry instead"}
+          </button>
+        ) : null}
+
+        {flow.stepIndex > 0 && !flow.busy ? (
+          <button
+            type="button"
+            onClick={() => {
+              setSuccessBanner(null);
+              flow.reset();
+            }}
+            className="min-h-[44px] touch-manipulation text-base text-gray-600 underline hover:text-gray-900"
           >
             Start over
           </button>
         ) : null}
       </section>
-
-      {(step === "site" || step === "room" || step === "rack") && (
-        <p className="text-xs text-gray-500">
-          <span className="font-medium text-gray-700">Tag:</span> {assetTag}
-          {(step === "room" || step === "rack") && site ? (
-            <>
-              {" "}
-              · <span className="font-medium text-gray-700">Site:</span> {site}
-            </>
-          ) : null}
-          {step === "rack" && room ? (
-            <>
-              {" "}
-              · <span className="font-medium text-gray-700">Room:</span> {room}
-            </>
-          ) : null}
-          {step === "rack" && rack ? (
-            <>
-              {" "}
-              · <span className="font-medium text-gray-700">Shelf / slot:</span> {rack}
-            </>
-          ) : null}
-        </p>
-      )}
     </div>
   );
 }
 
-function placeholderFor(step: Step): string {
-  switch (step) {
-    case "tag":
-      return "Scan asset tag, then Enter…";
-    case "site":
-      return "Scan site / building zone, then Enter…";
-    case "room":
-      return "Scan storage room, then Enter…";
-    case "rack":
-      return "Scan shelf pad, aisle slot, then Enter…";
-    default:
-      return "";
-  }
+export default function TechStorePage() {
+  const [successBanner, setSuccessBanner] = useState<string | null>(null);
+  const [entryMode, setEntryMode] = useState<StoreWorkflowMode>("manual");
+
+  useAutoDismiss(successBanner, setSuccessBanner, 6500);
+
+  const toggleInputMethod = useCallback(() => {
+    setSuccessBanner(null);
+    setEntryMode((m) => (m === "manual" ? "camera" : "manual"));
+  }, []);
+
+  return (
+    <StoreFlowBody
+      mode={entryMode}
+      onToggleInputMethod={toggleInputMethod}
+      successBanner={successBanner}
+      setSuccessBanner={setSuccessBanner}
+    />
+  );
 }

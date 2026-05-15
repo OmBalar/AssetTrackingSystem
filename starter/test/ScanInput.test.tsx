@@ -9,7 +9,7 @@ describe("<ScanInput>", () => {
     const input = screen.getByPlaceholderText(/scan or type/i) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "  C0000101  " } });
     fireEvent.keyDown(input, { key: "Enter" });
-    expect(onScan).toHaveBeenCalledWith("C0000101");
+    expect(onScan).toHaveBeenCalledWith("C0000101", { source: "keyboard" });
   });
 
   it("does not fire on empty submission", () => {

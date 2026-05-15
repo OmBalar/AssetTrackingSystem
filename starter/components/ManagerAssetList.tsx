@@ -4,11 +4,120 @@ import { api, ApiError } from "@/lib/api-client";
 import { formatApiErrorForUser } from "@/lib/format-api-error";
 import type { Asset, AssetState } from "@/lib/types";
 import { formatDateTimeShort, labelTitleCase } from "@/lib/format-display";
+import {
+  MANAGER_LIST_PAGE_SIZE_OPTIONS,
+  parseManagerListPageSize,
+} from "@/lib/manager-list-params";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import type { ReconciliationApiResponse, ReconciliationCategory } from "@/lib/reconciliation";
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
+const PAGE_SIZE_OPTIONS = MANAGER_LIST_PAGE_SIZE_OPTIONS;
+
+/** Tooltip copy for flagged rows (matches dashboard buckets). */
+const RECONCILE_VISIT_HINT =
+  "Open Three-way reconciliation for the full report and suggested next steps.";
+
+const RECON_CATEGORY_HOVER: Record<
+  Exclude<ReconciliationCategory, "healthy">,
+  string
+> = {
+  needs_review: `Category: needs a clear decision. ${RECONCILE_VISIT_HINT}`,
+  drift: `Category: out of sync (usually fixable). ${RECONCILE_VISIT_HINT}`,
+  expected_difference: `Category: within normal operating range (still listed on the report). ${RECONCILE_VISIT_HINT}`,
+};
+
+function reconciliationTooltip(category: ReconciliationCategory): string | null {
+  if (category === "healthy") return null;
+  return RECON_CATEGORY_HOVER[category];
+}
+
+function ReconciliationRowAlert({ tooltip }: { tooltip: string }) {
+  const tipId = useId();
+  const anchorRef = useRef<HTMLSpanElement>(null);
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ left: 0, top: 0 });
+
+  const updatePosition = useCallback(() => {
+    const el = anchorRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setPos({
+      left: r.left + r.width / 2,
+      top: r.top,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    updatePosition();
+    const onScrollOrResize = () => updatePosition();
+    window.addEventListener("scroll", onScrollOrResize, true);
+    window.addEventListener("resize", onScrollOrResize);
+    return () => {
+      window.removeEventListener("scroll", onScrollOrResize, true);
+      window.removeEventListener("resize", onScrollOrResize);
+    };
+  }, [open, updatePosition]);
+
+  const onOpen = () => {
+    updatePosition();
+    setOpen(true);
+  };
+  const onClose = () => setOpen(false);
+
+  return (
+    <>
+      <span
+        ref={anchorRef}
+        className="relative inline-flex shrink-0 cursor-help text-amber-600 outline-none"
+        onClick={(e) => e.stopPropagation()}
+        onMouseEnter={onOpen}
+        onMouseLeave={onClose}
+        onFocus={onOpen}
+        onBlur={onClose}
+        tabIndex={0}
+        aria-describedby={open ? tipId : undefined}
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          className="h-4 w-4"
+          aria-hidden="true"
+        >
+          <path
+            fillRule="evenodd"
+            d="M8.485 2.495c.673-1.167 2.357-1.167 3.03 0l6.28 10.875c.673 1.167-.17 2.625-1.516 2.625H3.72c-1.347 0-2.189-1.458-1.515-2.625L8.485 2.495zM10 5a.75.75 0 01.75.75v3.5a.75.75 0 01-1.5 0v-3.5A.75.75 0 0110 5zm0 9a1 1 0 100-2 1 1 0 000 2z"
+            clipRule="evenodd"
+          />
+        </svg>
+      </span>
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              id={tipId}
+              role="tooltip"
+              className="pointer-events-none fixed z-[300] w-max max-w-xs rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs font-medium leading-snug text-gray-900 shadow-md"
+              style={{
+                left: pos.left,
+                top: pos.top,
+                transform: "translate(-50%, calc(-100% - 8px))",
+              }}
+            >
+              <span className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500">
+                Three-way reconciliation
+              </span>
+              <span className="mt-1 block font-normal text-gray-800">{tooltip}</span>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
 
 const ASSET_STATES: AssetState[] = [
   "unreceived",
@@ -21,15 +130,22 @@ const ASSET_STATES: AssetState[] = [
 
 export function ManagerAssetList() {
   const router = useRouter();
-  const [stateFilter, setStateFilter] = useState<string>("");
-  const [siteFilter, setSiteFilter] = useState<string>("");
-  const [custodianFilter, setCustodianFilter] = useState<string>("");
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState<number>(PAGE_SIZE_OPTIONS[0]);
+  const searchParams = useSearchParams();
+
+  const stateFilter = searchParams.get("state") ?? "";
+  const siteFilter = searchParams.get("site") ?? "";
+  const custodianFilter = searchParams.get("custodian") ?? "";
+  const pageSize = parseManagerListPageSize(searchParams.get("ps"));
+  const page = Math.max(1, Number.parseInt(searchParams.get("page") ?? "1", 10) || 1);
 
   const [allAssets, setAllAssets] = useState<Asset[]>([]);
   const [listLoading, setListLoading] = useState(true);
   const [listError, setListError] = useState<string | null>(null);
+  /** Tags flagged on the three-way report (non-healthy only). Null = not loaded yet. */
+  const [reconcileByTag, setReconcileByTag] = useState<Map<
+    string,
+    ReconciliationCategory
+  > | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,6 +167,34 @@ export function ManagerAssetList() {
           setAllAssets([]);
           setListLoading(false);
         }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/reconcile", { cache: "no-store" })
+      .then(async (res) => {
+        if (!res.ok) return null;
+        return res.json() as Promise<ReconciliationApiResponse>;
+      })
+      .then((data) => {
+        if (cancelled || !data) {
+          if (!cancelled) setReconcileByTag(new Map());
+          return;
+        }
+        const m = new Map<string, ReconciliationCategory>();
+        for (const item of data.items) {
+          if (item.category !== "healthy") {
+            m.set(item.asset_tag, item.category);
+          }
+        }
+        if (!cancelled) setReconcileByTag(m);
+      })
+      .catch(() => {
+        if (!cancelled) setReconcileByTag(new Map());
       });
     return () => {
       cancelled = true;
@@ -79,16 +223,18 @@ export function ManagerAssetList() {
     [allAssets, stateFilter, siteFilter, custodianFilter],
   );
 
-  useEffect(() => {
-    setPage(1);
-  }, [stateFilter, siteFilter, custodianFilter]);
-
   const total = filteredRows.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   useEffect(() => {
-    if (page > totalPages) setPage(totalPages);
-  }, [page, totalPages]);
+    if (page > totalPages && totalPages >= 1) {
+      const next = new URLSearchParams(searchParams.toString());
+      if (totalPages <= 1) next.delete("page");
+      else next.set("page", String(totalPages));
+      const qs = next.toString();
+      router.replace(qs ? `/manager?${qs}` : `/manager`, { scroll: false });
+    }
+  }, [page, totalPages, router, searchParams]);
 
   const pageSlice = useMemo(() => {
     const start = (page - 1) * pageSize;
@@ -98,11 +244,52 @@ export function ManagerAssetList() {
   const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
   const to = Math.min(page * pageSize, total);
 
+  const listQs = searchParams.toString();
+
+  const patchListParams = useCallback(
+    (patch: {
+      state?: string;
+      site?: string;
+      custodian?: string;
+      page?: number;
+      ps?: number;
+    }) => {
+      const next = new URLSearchParams(searchParams.toString());
+      const apply = (key: string, val: string | undefined) => {
+        if (val == null || val === "") next.delete(key);
+        else next.set(key, val);
+      };
+      if (patch.state !== undefined) apply("state", patch.state);
+      if (patch.site !== undefined) apply("site", patch.site);
+      if (patch.custodian !== undefined) apply("custodian", patch.custodian);
+      if (patch.ps !== undefined) {
+        next.set("ps", String(patch.ps));
+        next.delete("page");
+      }
+      if (patch.page !== undefined) {
+        if (patch.page <= 1) next.delete("page");
+        else next.set("page", String(patch.page));
+      }
+      const qs = next.toString();
+      router.replace(qs ? `/manager?${qs}` : `/manager`, { scroll: false });
+    },
+    [router, searchParams],
+  );
+
   const gotoDetail = useCallback(
     (tag: string) => {
-      router.push(`/manager/assets/${encodeURIComponent(tag)}`);
+      const suffix = listQs ? `?back=${encodeURIComponent(listQs)}` : "";
+      router.push(`/manager/assets/${encodeURIComponent(tag)}${suffix}`);
     },
-    [router],
+    [router, listQs],
+  );
+
+  const detailHref = useCallback(
+    (tag: string) =>
+      `/manager/assets/${encodeURIComponent(tag)}${
+        listQs ? `?back=${encodeURIComponent(listQs)}` : ""
+      }`,
+    [listQs],
   );
 
   return (
@@ -112,7 +299,7 @@ export function ManagerAssetList() {
           <span className="text-gray-600">State</span>
           <select
             value={stateFilter}
-            onChange={(e) => setStateFilter(e.target.value)}
+            onChange={(e) => patchListParams({ state: e.target.value, page: 1 })}
             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             aria-label="Filter by asset state"
           >
@@ -128,7 +315,7 @@ export function ManagerAssetList() {
           <span className="text-gray-600">Site</span>
           <select
             value={siteFilter}
-            onChange={(e) => setSiteFilter(e.target.value)}
+            onChange={(e) => patchListParams({ site: e.target.value, page: 1 })}
             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             aria-label="Filter by site"
           >
@@ -144,7 +331,7 @@ export function ManagerAssetList() {
           <span className="text-gray-600">Custodian</span>
           <select
             value={custodianFilter}
-            onChange={(e) => setCustodianFilter(e.target.value)}
+            onChange={(e) => patchListParams({ custodian: e.target.value, page: 1 })}
             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-gray-900 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             aria-label="Filter by custodian"
           >
@@ -187,7 +374,10 @@ export function ManagerAssetList() {
               </thead>
               <tbody>
                 {pageSlice.map((asset) => {
-                  const detailHref = `/manager/assets/${encodeURIComponent(asset.asset_tag)}`;
+                  const rowDetailHref = detailHref(asset.asset_tag);
+                  const reconCategory = reconcileByTag?.get(asset.asset_tag);
+                  const reconTooltip =
+                    reconCategory ? reconciliationTooltip(reconCategory) : null;
                   return (
                     <tr
                       key={asset.asset_tag}
@@ -195,7 +385,12 @@ export function ManagerAssetList() {
                       onClick={() => gotoDetail(asset.asset_tag)}
                     >
                       <td className="px-4 py-2 font-medium text-gray-900 tabular-nums">
-                        {asset.asset_tag}
+                        <span className="inline-flex items-center gap-1.5">
+                          {asset.asset_tag}
+                          {reconTooltip ? (
+                            <ReconciliationRowAlert tooltip={reconTooltip} />
+                          ) : null}
+                        </span>
                       </td>
                       <td className="px-4 py-2 text-gray-800">
                         {labelTitleCase(asset.state)}
@@ -210,7 +405,7 @@ export function ManagerAssetList() {
                       </td>
                       <td className="px-4 py-2 text-right whitespace-nowrap">
                         <Link
-                          href={detailHref}
+                          href={rowDetailHref}
                           onClick={(e) => e.stopPropagation()}
                           onKeyDown={(e) => e.stopPropagation()}
                           className="inline-flex rounded-lg border border-gray-300 bg-white px-3 py-1 text-xs font-medium text-gray-800 shadow-sm hover:bg-gray-50 hover:border-gray-400 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
@@ -247,7 +442,7 @@ export function ManagerAssetList() {
                     key={n}
                     type="button"
                     aria-pressed={pageSize === n}
-                    onClick={() => setPageSize(n)}
+                    onClick={() => patchListParams({ ps: n, page: 1 })}
                     className={`rounded-lg border px-2.5 py-1 font-medium shadow-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600 ${
                       pageSize === n
                         ? "border-blue-600 bg-blue-50 text-blue-950"
@@ -263,7 +458,7 @@ export function ManagerAssetList() {
                 <button
                   type="button"
                   disabled={page <= 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  onClick={() => patchListParams({ page: page - 1 })}
                   className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-800 shadow-sm hover:bg-gray-50 disabled:pointer-events-none disabled:opacity-40"
                 >
                   Previous
@@ -274,7 +469,7 @@ export function ManagerAssetList() {
                 <button
                   type="button"
                   disabled={page >= totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  onClick={() => patchListParams({ page: page + 1 })}
                   className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 font-medium text-gray-800 shadow-sm hover:bg-gray-50 disabled:pointer-events-none disabled:opacity-40"
                 >
                   Next

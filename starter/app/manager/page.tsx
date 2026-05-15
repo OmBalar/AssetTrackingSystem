@@ -1,5 +1,6 @@
 import { ManagerAssetList } from "@/components/ManagerAssetList";
 import Link from "next/link";
+import { Suspense } from "react";
 
 export default function ManagerDashboardPage() {
   return (
@@ -19,7 +20,15 @@ export default function ManagerDashboardPage() {
           Three-way reconciliation
         </Link>
       </div>
-      <ManagerAssetList />
+      <Suspense
+        fallback={
+          <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500 shadow-sm">
+            Loading dashboard…
+          </div>
+        }
+      >
+        <ManagerAssetList />
+      </Suspense>
     </div>
   );
 }

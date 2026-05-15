@@ -10,3 +10,43 @@ body {
 body {
   @apply bg-gray-50 text-gray-900 antialiased;
 }
+
+@keyframes tech-scan-check-pop {
+  from {
+    transform: scale(0.45);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes tech-scan-next-highlight {
+  0%,
+  35% {
+    box-shadow:
+      0 0 0 2px rgb(16 185 129 / 0.55),
+      0 0 24px rgb(16 185 129 / 0.28);
+    border-color: rgb(52 211 153 / 0.95);
+  }
+  70%,
+  100% {
+    box-shadow: 0 0 0 0 rgb(16 185 129 / 0);
+    border-color: rgb(229 231 235 / 1);
+  }
+}
+
+.tech-scan-check-icon {
+  display: inline-flex;
+  animation: tech-scan-check-pop 0.45s ease-out;
+}
+
+.tech-scan-next-cue {
+  animation: tech-scan-next-highlight 1.05s ease-in-out 2;
+}
+
+/* Avoid stacked duplicate camera previews if html5-qrcode injects more than one <video>. */
+.tech-scan-html5-root video ~ video {
+  display: none !important;
+}
