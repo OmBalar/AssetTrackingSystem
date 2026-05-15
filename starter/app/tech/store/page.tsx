@@ -156,7 +156,7 @@ export default function TechStorePage() {
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [entryMode, setEntryMode] = useState<StoreWorkflowMode>("manual");
 
-  useAutoDismiss(successBanner, setSuccessBanner, 6500);
+  useAutoDismiss(successBanner, setSuccessBanner, 1000);
 
   const toggleInputMethod = useCallback(() => {
     setSuccessBanner(null);

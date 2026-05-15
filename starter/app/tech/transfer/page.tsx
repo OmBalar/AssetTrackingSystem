@@ -18,7 +18,7 @@ export default function TechTransferPage() {
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [scanUxMode, setScanUxMode] = useState<TransferScanUxMode>("keyboard");
 
-  useAutoDismiss(successBanner, setSuccessBanner, 6500);
+  useAutoDismiss(successBanner, setSuccessBanner, 1000);
 
   const me = getCurrentUserId();
   const workflow = useMemo(() => createTransferWorkflowDefinition(me), [me]);

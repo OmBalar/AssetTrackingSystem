@@ -212,16 +212,22 @@ export function ManagerAssetList() {
     [allAssets],
   );
 
-  const filteredRows = useMemo(
-    () =>
-      allAssets.filter(
+  const filteredRows = useMemo(() => {
+    return allAssets
+      .filter(
         (a) =>
           (!stateFilter || a.state === stateFilter) &&
           (!siteFilter || a.location.site === siteFilter) &&
           (!custodianFilter || a.custodian === custodianFilter),
-      ),
-    [allAssets, stateFilter, siteFilter, custodianFilter],
-  );
+      )
+      .sort((a, b) => {
+        const tb = Date.parse(b.updated_at);
+        const ta = Date.parse(a.updated_at);
+        const diff = (Number.isFinite(tb) ? tb : 0) - (Number.isFinite(ta) ? ta : 0);
+        if (diff !== 0) return diff;
+        return a.asset_tag.localeCompare(b.asset_tag);
+      });
+  }, [allAssets, stateFilter, siteFilter, custodianFilter]);
 
   const total = filteredRows.length;
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
