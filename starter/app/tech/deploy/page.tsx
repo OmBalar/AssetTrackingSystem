@@ -16,7 +16,7 @@ export default function TechDeployPage() {
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [scanUxMode, setScanUxMode] = useState<DeployScanUxMode>("keyboard");
 
-  useAutoDismiss(successBanner, setSuccessBanner, 1000);
+  useAutoDismiss(successBanner, setSuccessBanner, 3000);
 
   const workflow = useMemo(() => createDeployWorkflowDefinition(), []);
   const flow = useScanFlow(workflow, {

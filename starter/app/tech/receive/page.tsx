@@ -180,7 +180,7 @@ export default function TechReceivePage() {
   const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [entryMode, setEntryMode] = useState<ReceiveWorkflowMode>("manual");
 
-  useAutoDismiss(successBanner, setSuccessBanner, 1000);
+  useAutoDismiss(successBanner, setSuccessBanner, 3000);
 
   const toggleInputMethod = useCallback(() => {
     setSuccessBanner(null);

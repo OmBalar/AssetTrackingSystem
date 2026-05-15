@@ -6,7 +6,7 @@ import type { AssetClass, Location } from "@/lib/types";
 export type ScanSource = "keyboard" | "camera";
 
 /** Camera path: success banner visibility and scanner pause before the next decode (keep in sync with hardware scanner resume). */
-export const CAMERA_STEP_SUCCESS_DISPLAY_MS = 500;
+export const CAMERA_STEP_SUCCESS_DISPLAY_MS = 1500;
 
 /** Prefer focusing the scan field on the next step only when the user is driving the wedge. */
 export function scanFieldAutofocusAfterSource(source: ScanSource): boolean {
