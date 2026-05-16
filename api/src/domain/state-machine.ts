@@ -10,6 +10,8 @@ export const TRANSITIONS: Transition[] = [
   { from: "unreceived", to: "received", via: "receive" },
   { from: "received", to: "stored", via: "store" },
   { from: "received", to: "in_service", via: "deploy" },
+  /** Re-put-away: update storage location without changing state. */
+  { from: "stored", to: "stored", via: "store" },
   { from: "stored", to: "in_service", via: "deploy" },
   { from: "stored", to: "disposed", via: "dispose" },
   { from: "in_service", to: "stored", via: "store" },

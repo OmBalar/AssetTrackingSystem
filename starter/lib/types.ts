@@ -1,9 +1,5 @@
-export type AssetClass =
-  | "instrument"
-  | "compute"
-  | "network"
-  | "power"
-  | "consumable_durable";
+/** Asset classification label — free text (not restricted to a fixed vocabulary). */
+export type AssetClass = string;
 
 export type AssetState =
   | "unreceived"

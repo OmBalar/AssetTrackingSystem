@@ -1,51 +1,47 @@
 "use client";
 
+import { ScanLoadingLine, ScanWorkflowStatus } from "@/components/ScanWorkflowStatus";
+import { TechScanCapturedSteps } from "@/components/TechScanCapturedSteps";
 import { TechScanCapture } from "@/components/TechScanCapture";
 import { TechScanStepHeader } from "@/components/TechScanStepHeader";
-import { ScanLoadingLine, ScanWorkflowStatus } from "@/components/ScanWorkflowStatus";
-import { useAutoDismiss } from "@/hooks/useAutoDismiss";
+import { TechWorkflowSuccessBanner } from "@/components/TechWorkflowSuccessBanner";
 import type { ScanSource } from "@/lib/scan-flow";
-import { humanizeState, compactLocation } from "@/lib/tech-scan-helpers";
-import { scanFlowProgress, useScanFlow } from "@/lib/tech-scan-flow";
+import { assetSuccessDetailRows, compactLocation, humanizeState } from "@/lib/tech-scan-helpers";
+import {
+  TECH_WORKFLOW_COMPLETED_SURFACE_COPY,
+  scanFlowProgress,
+  useScanFlow,
+} from "@/lib/tech-scan-flow";
 import { createStoreWorkflowDefinition, type StoreWorkflowMode } from "@/lib/tech-scan-workflows";
 import type { Asset } from "@/lib/types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-function StoreFlowBody({
-  mode,
-  onToggleInputMethod,
-  successBanner,
-  setSuccessBanner,
-}: {
-  mode: StoreWorkflowMode;
-  onToggleInputMethod: () => void;
-  successBanner: string | null;
-  setSuccessBanner: (v: string | null) => void;
-}) {
+function StoreFlowBody({ mode, onToggleInputMethod }: { mode: StoreWorkflowMode; onToggleInputMethod: () => void }) {
   const workflow = useMemo(() => createStoreWorkflowDefinition(mode), [mode]);
 
-  const flow = useScanFlow(workflow, {
-    onCompleteSuccess: (payload) => {
-      const updated = payload as Asset;
-      const locText = compactLocation(updated.location);
-      setSuccessBanner(`Stored ${updated.asset_tag} — ${humanizeState(updated.state)} @ ${locText}`);
-    },
-  });
+  const flow = useScanFlow(workflow);
 
   const prevModeRef = useRef(mode);
   useEffect(() => {
     if (prevModeRef.current === mode) return;
     prevModeRef.current = mode;
-    setSuccessBanner(null);
     flow.reset();
-  }, [mode, flow.reset, setSuccessBanner]);
+  }, [mode, flow.reset]);
 
   const { current: stepNum, total: stepTotal } = scanFlowProgress(flow.stepIndex, flow.stepTotal);
   const ui = flow.currentStep.ui;
+  const workflowDone = flow.phase === "completed";
+  const surfaceInstruction = workflowDone ? TECH_WORKFLOW_COMPLETED_SURFACE_COPY.instruction : ui.instruction;
+  const cameraModalTitle = workflowDone ? TECH_WORKFLOW_COMPLETED_SURFACE_COPY.cameraModalTitle : ui.cameraModalTitle;
+  const cameraInstruction = workflowDone
+    ? TECH_WORKFLOW_COMPLETED_SURFACE_COPY.cameraInstruction
+    : ui.instruction;
+  const scanPlaceholder = workflowDone ? TECH_WORKFLOW_COMPLETED_SURFACE_COPY.placeholder : ui.placeholder;
+  const storedAsset =
+    workflowDone && flow.completedPayload ? (flow.completedPayload as Asset) : null;
 
   const onScan = useCallback(
-    (value: string, meta?: { source: ScanSource }) =>
-      flow.ingestScan(value, meta?.source ?? "keyboard"),
+    (value: string, meta?: { source: ScanSource }) => flow.ingestScan(value, meta?.source ?? "keyboard"),
     [flow.ingestScan],
   );
 
@@ -54,18 +50,40 @@ function StoreFlowBody({
 
   const onAssetTagStep = flow.stepIndex === 0 && !flow.context.assetTag;
 
+  const successRibbon =
+    workflowDone && storedAsset && flow.completedAtMs !== null ? (
+      <TechWorkflowSuccessBanner
+        key={flow.completedAtMs}
+        headline="Asset stored successfully"
+        details={assetSuccessDetailRows(storedAsset)}
+        capturedSteps={flow.capturedSteps}
+        persistHint="Expand for full details — hides when you scan the next asset tag (e.g. C0123456)."
+      />
+    ) : null;
+
   return (
-    <div className="mx-auto max-w-lg space-y-6 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+    <div
+      className={`mx-auto max-w-lg space-y-6 pb-[max(1.25rem,env(safe-area-inset-bottom))]${
+        successRibbon ? " pt-[5.25rem]" : ""
+      }`}
+    >
       <h1 className="text-2xl font-bold text-gray-900">Store — put-away</h1>
 
-      <ScanWorkflowStatus success={successBanner} error={flow.error} />
+      <ScanWorkflowStatus error={workflowDone ? null : flow.error} />
+
+      {successRibbon}
 
       <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 shadow-sm" aria-busy={flow.busy}>
-        <TechScanStepHeader current={stepNum} total={stepTotal} label={ui.stepLabel} />
+        <TechScanStepHeader
+          current={stepNum}
+          total={stepTotal}
+          label={ui.stepLabel}
+          workflowCompleted={workflowDone}
+        />
 
-        <p className="text-sm leading-snug text-gray-700">{ui.instruction}</p>
+        <p className="text-sm leading-snug text-gray-700">{surfaceInstruction}</p>
 
-        {flow.context.asset && flow.stepIndex > 0 ? (
+        {!workflowDone && flow.context.asset && flow.stepIndex > 0 ? (
           <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
             <span className="font-medium">{flow.context.asset.asset_tag}</span>
             {" · state "}
@@ -77,31 +95,17 @@ function StoreFlowBody({
           </div>
         ) : null}
 
-        {mode === "camera" && flow.stepIndex === 1 ? (
+        {mode === "camera" && flow.stepIndex === 1 && !workflowDone ? (
           <p className="text-sm text-gray-700">
             One location QR: <span className="font-mono text-gray-900">SITE/ROOM/RACK</span> (slashes only).
           </p>
         ) : null}
 
-        {mode === "manual" && flow.stepIndex > 0 && flow.context.assetTag ? (
-          <p className="text-xs text-gray-600">
-            Tag: <span className="font-semibold text-gray-900">{flow.context.assetTag}</span>
-            {flow.context.manualLocSite ? (
-              <>
-                {" "}
-                · Put-away site:{" "}
-                <span className="font-semibold text-gray-900">{flow.context.manualLocSite}</span>
-              </>
-            ) : null}
-            {flow.context.manualLocRoom ? (
-              <>
-                {" "}
-                · Put-away room:{" "}
-                <span className="font-semibold text-gray-900">{flow.context.manualLocRoom}</span>
-              </>
-            ) : null}
-          </p>
-        ) : null}
+        <TechScanCapturedSteps
+          items={flow.capturedSteps}
+          completedSession={workflowDone}
+          nextStepLabel={!workflowDone ? ui.stepLabel : null}
+        />
 
         <TechScanCapture
           scanInputKey={flow.inputEpoch}
@@ -111,14 +115,15 @@ function StoreFlowBody({
           autoOpenCameraOnStepChange={autoCamera}
           onCameraSessionDismissed={mode === "camera" ? onToggleInputMethod : undefined}
           label={flow.stepIndex > 0 ? `Asset ${flow.context.assetTag}` : undefined}
-          placeholder={ui.placeholder}
-          cameraModalTitle={ui.cameraModalTitle}
-          cameraInstruction={ui.instruction}
-          scanStepAck={flow.scanStepAck}
+          placeholder={scanPlaceholder}
+          cameraModalTitle={cameraModalTitle}
+          cameraInstruction={cameraInstruction}
+          scanStepAck={workflowDone ? null : flow.scanStepAck}
           workflowError={flow.error}
-          workflowSuccessMessage={successBanner}
+          workflowSuccessMessage={workflowDone ? "Put-away saved — details are in the banner above." : null}
           stepIndex={flow.stepIndex}
-          stepLabel={ui.stepLabel}
+          stepLabel={workflowDone ? undefined : ui.stepLabel}
+          cameraSessionCapturedSteps={flow.capturedSteps}
           onScan={onScan}
         />
 
@@ -135,13 +140,10 @@ function StoreFlowBody({
           </button>
         ) : null}
 
-        {flow.stepIndex > 0 && !flow.busy ? (
+        {!workflowDone && flow.stepIndex > 0 && !flow.busy ? (
           <button
             type="button"
-            onClick={() => {
-              setSuccessBanner(null);
-              flow.reset();
-            }}
+            onClick={() => flow.reset()}
             className="min-h-[44px] touch-manipulation text-base text-gray-600 underline hover:text-gray-900"
           >
             Start over
@@ -153,22 +155,9 @@ function StoreFlowBody({
 }
 
 export default function TechStorePage() {
-  const [successBanner, setSuccessBanner] = useState<string | null>(null);
   const [entryMode, setEntryMode] = useState<StoreWorkflowMode>("manual");
 
-  useAutoDismiss(successBanner, setSuccessBanner, 3000);
+  const toggleInputMethod = useCallback(() => setEntryMode((m) => (m === "manual" ? "camera" : "manual")), []);
 
-  const toggleInputMethod = useCallback(() => {
-    setSuccessBanner(null);
-    setEntryMode((m) => (m === "manual" ? "camera" : "manual"));
-  }, []);
-
-  return (
-    <StoreFlowBody
-      mode={entryMode}
-      onToggleInputMethod={toggleInputMethod}
-      successBanner={successBanner}
-      setSuccessBanner={setSuccessBanner}
-    />
-  );
+  return <StoreFlowBody mode={entryMode} onToggleInputMethod={toggleInputMethod} />;
 }

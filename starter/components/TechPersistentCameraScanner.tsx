@@ -19,9 +19,9 @@ export type TechPersistentCameraScannerProps = {
   chrome?: "card" | "plain";
   title: string;
   footerHint?: string;
-  /** Return `true` when the flow accepted the scan — camera waits before decoding again. */
+  /** Return `true` when the flow accepted the scan — camera waits before decoding again (success only). */
   onScan: (text: string) => boolean | void | Promise<boolean | void>;
-  /** After an accepted scan, ignore further decodes this long (matches success banner on camera path). */
+  /** After an accepted scan, pause decodes this long (matches ingest success banner pacing). */
   successResumeDelayMs?: number;
 };
 
@@ -195,7 +195,7 @@ export function TechPersistentCameraScanner({
                 return;
               }
 
-              if (accepted) {
+              if (accepted && successResumeDelayMs > 0) {
                 await new Promise((resolve) => window.setTimeout(resolve, successResumeDelayMs));
               }
 

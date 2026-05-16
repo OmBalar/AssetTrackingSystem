@@ -5,6 +5,7 @@ import { ScanInput } from "@/components/ScanInput";
 import { TechScanModeControls } from "@/components/TechScanModeControls";
 import { TechPersistentCameraScanner } from "@/components/TechPersistentCameraScanner";
 import { scheduleFocus } from "@/lib/focus-helpers";
+import type { TechScanCapturedStep } from "@/lib/tech-scan-flow";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export type TechScanCaptureProps = Omit<ScanInputProps, "onScan"> & {
@@ -29,6 +30,8 @@ export type TechScanCaptureProps = Omit<ScanInputProps, "onScan"> & {
   workflowSuccessMessage?: string | null;
   /** Step index from the scan flow — bumps highlight when it changes. */
   stepIndex?: number;
+  /** Rows collected so far in this workflow (shown at the top of the camera overlay). */
+  cameraSessionCapturedSteps?: readonly TechScanCapturedStep[];
   /** Label for what should be scanned next (keyboard path cue). */
   stepLabel?: string;
   /** If set, called when the camera overlay closes (Close, or “Keyboard only”) — e.g. receive flow switches to manual. */
@@ -57,6 +60,7 @@ export function TechScanCapture({
   workflowSuccessMessage,
   stepIndex = 0,
   stepLabel,
+  cameraSessionCapturedSteps,
   onCameraSessionDismissed,
   omitInlineModeControls = false,
   disabled,
@@ -65,19 +69,6 @@ export function TechScanCapture({
   const inputRef = useRef<HTMLInputElement>(null);
   const [cameraOverlayOpen, setCameraOverlayOpen] = useState(false);
   const [cameraRetryNonce, setCameraRetryNonce] = useState(0);
-  const [flashNextCue, setFlashNextCue] = useState(false);
-
-  const firstStepMountRef = useRef(true);
-
-  useEffect(() => {
-    if (firstStepMountRef.current) {
-      firstStepMountRef.current = false;
-      return;
-    }
-    setFlashNextCue(true);
-    const id = window.setTimeout(() => setFlashNextCue(false), 2300);
-    return () => window.clearTimeout(id);
-  }, [stepIndex]);
 
   useEffect(() => {
     if (!cameraOverlayOpen) return;
@@ -101,13 +92,12 @@ export function TechScanCapture({
     [onScan],
   );
 
-  const scanPaused = Boolean(disabled);
-  const pauseCameraHardware = Boolean(
-    disabled ||
-      (scanStepAck != null && scanStepAck !== "") ||
-      (workflowSuccessMessage != null && workflowSuccessMessage !== ""),
-  );
-  const cameraStreamActive = !pauseCameraHardware;
+  /**
+   * Keep `TechPersistentCameraScanner` `active` — stopping the stream when `scanStepAck` appeared tore the video out
+   * while html5-qrcode still awaited success delays (`play()` AbortError + visible flicker on restart).
+   * Pause decoding only via `scanPaused` so the preview stays stable.
+   */
+  const scanPaused = Boolean(disabled || (scanStepAck != null && scanStepAck !== ""));
 
   const openOrRetryCamera = useCallback(() => {
     if (hideCameraOption) return;
@@ -204,10 +194,8 @@ export function TechScanCapture({
       ) : null}
 
       {stepLabel ? (
-        <div
-          className={`rounded-lg border px-3 py-2 transition-colors ${flashNextCue ? "tech-scan-next-cue border-emerald-400 bg-emerald-50/90" : "border-gray-200 bg-gray-50"}`}
-        >
-          <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-900">Next scan</p>
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+          <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700">Next scan</p>
           <p className="text-sm font-semibold text-gray-900">{stepLabel}</p>
         </div>
       ) : null}
@@ -256,6 +244,27 @@ export function TechScanCapture({
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pb-2 pt-2">
+            {cameraSessionCapturedSteps?.length ? (
+              <div
+                className="mb-2 max-h-[26vh] shrink-0 overflow-y-auto rounded-lg border border-emerald-500/25 bg-zinc-950/95 px-3 py-2 shadow-inner"
+                aria-label="Captured data this session"
+              >
+                <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-200/95">Captured this session</p>
+                <ul className="mt-2 space-y-2 border-t border-white/10 pt-2">
+                  {cameraSessionCapturedSteps.map((row, i) => (
+                    <li key={`${row.label}-${row.value}-${i}`} className="text-sm leading-snug text-white">
+                      <span className="block text-[11px] font-semibold uppercase tracking-wide text-emerald-200/85">
+                        {row.label}
+                      </span>
+                      <span className="mt-0.5 block break-words font-mono text-[14px] font-semibold tracking-tight">
+                        {row.value}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+
             {workflowError ? (
               <div
                 role="alert"
@@ -265,23 +274,11 @@ export function TechScanCapture({
                 <p className="text-[11px] font-bold uppercase tracking-wide text-amber-200">Fix needed</p>
                 <p className="mt-1 text-sm font-medium leading-snug text-amber-50">{workflowError}</p>
                 <p className="mt-2 text-xs leading-snug text-amber-100/95">
-                  {workflowError.includes("Serial") || workflowError.includes("serial")
+                  {workflowError.includes("serial") ||
+                  workflowError.includes("Serial") ||
+                  workflowError.includes("On-file serial")
                     ? "Check the equipment QR matches the asset on file (serial must match operations)."
                     : "Please scan or type the correct payload for this step."}
-                </p>
-              </div>
-            ) : null}
-
-            {workflowSuccessMessage ? (
-              <div
-                role="status"
-                aria-live="polite"
-                className="mb-2 shrink-0 rounded-lg border border-emerald-400/90 bg-emerald-950 px-3 py-3 shadow-lg"
-              >
-                <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-200/95">Workflow complete</p>
-                <p className="mt-1 text-base font-semibold leading-snug text-emerald-50">{workflowSuccessMessage}</p>
-                <p className="mt-2 text-xs leading-snug text-emerald-100/95">
-                  Continue with the next step — scan or type below, or close the camera when you are finished.
                 </p>
               </div>
             ) : null}
@@ -318,18 +315,18 @@ export function TechScanCapture({
 
             <TechPersistentCameraScanner
               chrome="plain"
-              active={cameraStreamActive}
+              active
               scanPaused={scanPaused}
               retryNonce={cameraRetryNonce}
               title={cameraModalTitle}
               footerHint={
                 workflowError
                   ? "Resolve the alert above, then scan again."
-                  : !cameraStreamActive && workflowSuccessMessage
-                    ? "Camera off — live preview resumes when this message clears."
-                    : !cameraStreamActive && scanStepAck
-                      ? "Camera off while you review — preview resumes in a moment."
-                      : !cameraStreamActive
+                  : scanPaused && workflowSuccessMessage
+                    ? "Workflow finished — new scans resume when you continue."
+                    : scanPaused && scanStepAck
+                      ? "Reviewing last scan — new QR reads resume in a moment."
+                      : scanPaused
                         ? "Please wait…"
                         : cameraFooterHint ?? "Hold the QR steady — submits automatically when read."
               }
@@ -340,12 +337,12 @@ export function TechScanCapture({
           <p className="shrink-0 border-t border-white/10 bg-zinc-950 px-3 py-2 text-center text-xs leading-snug text-white/75 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
             {workflowError
               ? "Read the alert above. The preview stays live — scan again when fixed."
-              : !cameraStreamActive && workflowSuccessMessage
-                ? "Camera paused — preview turns back on when this banner clears."
-                : !cameraStreamActive && scanStepAck
-                  ? "Camera paused — give it a moment before the next scan."
-                  : !cameraStreamActive
-                    ? "Working — camera paused."
+              : scanPaused && workflowSuccessMessage
+                ? "Preview stays on — finish up below, then scan or close when ready."
+                : scanPaused && scanStepAck
+                  ? "Preview stays on — wait briefly before scanning the next code."
+                  : scanPaused
+                    ? "Working — scanning resumes automatically when ready."
                     : "Waiting on this step’s QR. Close anytime to type with the keyboard field instead."}
           </p>
         </div>

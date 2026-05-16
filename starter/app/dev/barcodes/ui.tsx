@@ -5,7 +5,10 @@ import { QrCodeDisplay } from "@/components/QrCodeDisplay";
 import {
   COMPACT_LOCATION_BARCODE_EXAMPLE,
   COMPACT_LOCATION_BARCODE_LABEL,
+  DEPLOY_COMPACT_LOCATION_BARCODE_EXAMPLE,
+  DEPLOY_COMPACT_LOCATION_BARCODE_LABEL,
   formatCompactLocationBarcode,
+  formatDeployLocationBarcode,
 } from "@/lib/scan-flow";
 import { formatReceiveEquipmentQr } from "@/lib/scan-format-validation";
 
@@ -71,6 +74,11 @@ const LOC = {
   telecom: formatCompactLocationBarcode("Lab-Building-A", "Telecom-1", "T-01"),
 } as const;
 
+const deployBayB04U16 = formatDeployLocationBarcode("Lab-Building-A", "Bay-12", "B-04", "U16");
+const deployDockP02 = formatDeployLocationBarcode("Lab-Building-A", "Receiving", "DOCK-2", "P-02");
+const deployShelfRu = formatDeployLocationBarcode("Lab-Building-A", "Storage-1", "SHELF-3", "U08");
+const deployBuildingBC12 = formatDeployLocationBarcode("Lab-Building-B", "Computing-1", "C-12", "U22");
+
 export function DevBarcodesClient() {
   return (
     <>
@@ -95,8 +103,18 @@ export function DevBarcodesClient() {
           </li>
           <li>Inside an equipment QR, serial is alphanumeric or SN-* (never the C-tag pattern)</li>
           <li>
-            Locations — single QR payload <code className="rounded bg-white/80 px-1">{COMPACT_LOCATION_BARCODE_LABEL}</code>{" "}
-            (slashes only; example <code className="rounded bg-white/80 px-1">{COMPACT_LOCATION_BARCODE_EXAMPLE}</code>)
+            Locations (receive / store) — single QR payload{" "}
+            <code className="rounded bg-white/80 px-1">{COMPACT_LOCATION_BARCODE_LABEL}</code> (slashes only; example{" "}
+            <code className="rounded bg-white/80 px-1">{COMPACT_LOCATION_BARCODE_EXAMPLE}</code>)
+          </li>
+          <li>
+            <strong>Deploy — camera</strong> — after the asset tag, one QR with{" "}
+            <code className="rounded bg-white/80 px-1">{DEPLOY_COMPACT_LOCATION_BARCODE_LABEL}</code> (four slash-separated
+            segments, example <code className="rounded bg-white/80 px-1">{DEPLOY_COMPACT_LOCATION_BARCODE_EXAMPLE}</code>).
+          </li>
+          <li>
+            <strong>Deploy — manual</strong> — type site, room, rack, and RU as <strong>four separate fields</strong> (no
+            slashes; same strings as in a deploy location QR).
           </li>
           <li>Custodian badges — ids like tech-jane or manager-paul</li>
         </ul>
@@ -183,21 +201,13 @@ export function DevBarcodesClient() {
       </Section>
 
       <Section
-        title="Deploy (single-field QRs)"
-        description="Deploy scans four separate location fields plus RU — each QR contains only one segment (do not use the compact SITE/ROOM/RACK QR on these steps)."
+        title="Deploy — full rack location (camera)"
+        description={`Use /tech/deploy with “Use camera for this flow”. One QR encodes ${DEPLOY_COMPACT_LOCATION_BARCODE_LABEL} — not the three-part receive/store location QR.`}
       >
-        <QrTile label="Deploy · Site" value="Lab-Building-A" note="Matches seeded Location.site vocabulary." />
-        <QrTile label="Deploy · Site (alternate)" value="Lab-Building-B" />
-        <QrTile label="Deploy · Room" value="Bay-12" />
-        <QrTile label="Deploy · Room — receiving" value="Receiving" />
-        <QrTile label="Deploy · Room — storage" value="Storage-1" />
-        <QrTile label="Deploy · Rack / shelf id" value="DOCK-2" />
-        <QrTile label="Deploy · Rack — SHELF-3" value="SHELF-3" />
-        <QrTile label="Deploy · Rack — B-04" value="B-04" />
-        <QrTile label="Deploy · Rack — B-05" value="B-05" />
-        <QrTile label="Deploy · Rack — C-12 (Building B)" value="C-12" />
-        <QrTile label="Deploy · RU / slot" value="P-02" />
-        <QrTile label="Deploy · RU example" value="U16" />
+        <QrTile label="Bay-12 · B-04 · U16" value={deployBayB04U16} note="Example Bay rack + RU." />
+        <QrTile label="Receiving · DOCK-2 · P-02" value={deployDockP02} note="Dock staging with slot label." />
+        <QrTile label="Storage-1 · SHELF-3 · U08" value={deployShelfRu} note="Seeded store path companion." />
+        <QrTile label="Building B · C-12 · U22" value={deployBuildingBC12} note="Compute row + RU." />
       </Section>
 
       <Section

@@ -1,11 +1,37 @@
 import { ApiError } from "./api-client.js";
 
-function shortSerialConflict(expected: string, provided: string): string {
-  return `Serial mismatch — file: ${expected}, scanned: ${provided}. Check the label.`;
+function coerceDetailText(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === "string") {
+    const t = value.trim();
+    return t.length ? t : null;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return null;
+}
+
+function formatAssetSerialMismatch(tag: string | null, expected: string | null, provided: string | null): string {
+  const prefix = tag != null && tag.trim() !== "" ? `Asset ${tag.trim()}. ` : "";
+  return `${prefix}On-file serial (ops): ${expected ?? "— unavailable"}. You scanned: ${provided ?? "—"}. Scan equipment whose serial matches the on-file value.`;
 }
 
 function humanizeState(state: string): string {
   return state.replace(/_/g, " ");
+}
+
+/** First Zod issue from API `details.issues` (Fastify receive/store body validation). */
+function firstZodIssueSummary(details: Record<string, unknown> | undefined): string | null {
+  const issues = details?.issues;
+  if (!Array.isArray(issues) || issues.length === 0) return null;
+  const first = issues[0] as { path?: unknown; message?: unknown };
+  if (typeof first.message !== "string" || !first.message) return null;
+  const path = Array.isArray(first.path)
+    ? first.path.map((p) => String(p)).filter((p) => p !== "")
+    : [];
+  const pathStr = path.length ? path.join(".") : "";
+  return pathStr ? `${pathStr}: ${first.message}` : first.message;
 }
 
 /** Uses API `details.location` from incomplete_deploy_location (and similar). */
@@ -27,12 +53,10 @@ function missingDeployFieldLabels(details: Record<string, unknown> | undefined):
 
 export function formatApiErrorForUser(err: ApiError): string {
   if (err.code === "and_match_failed") {
-    const expected = err.details?.expected_serial;
-    const provided = err.details?.provided_serial;
-    if (typeof expected === "string" && typeof provided === "string") {
-      return shortSerialConflict(expected, provided);
-    }
-    return "Serial doesn't match what's on file for this tag. Rescan.";
+    const tag = coerceDetailText(err.details?.asset_tag ?? err.details?.assetTag);
+    const expected = coerceDetailText(err.details?.expected_serial ?? err.details?.expectedSerial);
+    const provided = coerceDetailText(err.details?.provided_serial ?? err.details?.providedSerial);
+    return formatAssetSerialMismatch(tag, expected, provided);
   }
   if (err.code === "invalid_transition") {
     const from = err.details?.from_state;
@@ -68,8 +92,13 @@ export function formatApiErrorForUser(err: ApiError): string {
   if (err.code === "invalid_tag_format") {
     return "Bad tag format — C + 7 digits. Rescan.";
   }
+  if (err.code === "invalid_receive_payload") {
+    const z = firstZodIssueSummary(err.details);
+    return z ? `Receive rejected — ${z}` : "Receive rejected — check all fields and try again.";
+  }
   if (err.code === "invalid_location") {
-    return "Location rejected — check site, room, rack, then scan again.";
+    const z = firstZodIssueSummary(err.details);
+    return z ? `Request didn't validate — ${z}` : "Location rejected — check site, room, rack, then scan again.";
   }
   if (err.code === "unknown_asset") {
     return "Tag not in operations. Confirm barcode or receive new.";

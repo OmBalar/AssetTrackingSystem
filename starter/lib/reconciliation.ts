@@ -456,9 +456,10 @@ export function reconcileJoinedRow(
   if (!financeRow) {
     if (asset.state !== "unreceived") {
       const softReceive = asset.state === "received";
+      const receivedOrStored = asset.state === "received" || asset.state === 'stored';
       issues.push({
         code: "finance_record_missing",
-        tier: "drift",
+        tier: receivedOrStored ? "expected_difference" : "drift",
         severity: softReceive ? "medium" : "high",
         confidence: softReceive ? "medium" : "high",
         summary: softReceive

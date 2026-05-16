@@ -1,10 +1,6 @@
 "use client";
 
-import {
-  type ScanSource,
-  CAMERA_STEP_SUCCESS_DISPLAY_MS,
-  scanFieldAutofocusAfterSource,
-} from "@/lib/scan-flow";
+import { type ScanSource, CAMERA_ALERT_HOLD_MS, isReceiveAssetTag, scanFieldAutofocusAfterSource } from "@/lib/scan-flow";
 import type { Asset, AssetClass, Location } from "@/lib/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -54,10 +50,23 @@ export type ScanFlowEnv = {
   setLookupBusy: (v: boolean) => void;
 };
 
+/** One row in the persistent “what was scanned” terminal log (shown across steps until reset). */
+export type TechScanCapturedStep = {
+  label: string;
+  value: string;
+};
+
 export type ScanStepOutcome =
-  | { outcome: "advance"; patch?: Partial<TechScanFlowContext>; ack?: string; bumpInput?: boolean }
+  | {
+      outcome: "advance";
+      patch?: Partial<TechScanFlowContext>;
+      ack?: string;
+      bumpInput?: boolean;
+      /** Shown under completed steps until the workflow is cleared. */
+      capture?: TechScanCapturedStep;
+    }
   | { outcome: "error"; message: string; bumpInput?: boolean }
-  | { outcome: "complete"; patch?: Partial<TechScanFlowContext> }
+  | { outcome: "complete"; patch?: Partial<TechScanFlowContext>; capture?: TechScanCapturedStep }
   | { outcome: "noop" };
 
 export type ScanFlowCompleteResult =
@@ -89,6 +98,8 @@ export type ScanFlowDefinition = {
 /** Keyboard wedge: pause before step ack clears (matches camera pacing). */
 const KEYBOARD_STEP_ACK_MS = 1500;
 
+export type TechScanWorkflowPhase = "active" | "completed";
+
 export type UseScanFlowOptions = {
   onCompleteSuccess?: (payload?: unknown) => void;
 };
@@ -99,6 +110,13 @@ export type UseScanFlowResult = {
   stepTotal: number;
   currentStep: ScanFlowStepDefinition;
   context: TechScanFlowContext;
+  phase: TechScanWorkflowPhase;
+  /** Successful API payload from the last run (until reset / next session). */
+  completedPayload: unknown | null;
+  /** `Date.now()` when the workflow completed successfully. */
+  completedAtMs: number | null;
+  /** Human-readable scanned values accumulated while progressing (excluding success-only overlays). */
+  capturedSteps: readonly TechScanCapturedStep[];
   scanFieldAutofocus: boolean;
   inputEpoch: number;
   scanStepAck: string | null;
@@ -135,6 +153,12 @@ export function useScanFlow(
   const [error, setError] = useState<string | null>(null);
   const [lookupBusy, setLookupBusy] = useState(false);
   const [submitBusy, setSubmitBusy] = useState(false);
+  const [phase, setPhase] = useState<TechScanWorkflowPhase>("active");
+  const phaseRef = useRef<TechScanWorkflowPhase>("active");
+  phaseRef.current = phase;
+  const [completedPayload, setCompletedPayload] = useState<unknown | null>(null);
+  const [completedAtMs, setCompletedAtMs] = useState<number | null>(null);
+  const [capturedSteps, setCapturedSteps] = useState<TechScanCapturedStep[]>([]);
 
   const busy = lookupBusy || submitBusy;
   const stepTotal = definition.steps.length;
@@ -148,6 +172,11 @@ export function useScanFlow(
     return () => window.clearTimeout(id);
   }, [scanStepAck]);
 
+  const appendCapture = useCallback((capture: TechScanCapturedStep | undefined) => {
+    if (!capture) return;
+    setCapturedSteps((prev) => [...prev, capture]);
+  }, []);
+
   const reset = useCallback(() => {
     const empty = emptyTechScanFlowContext();
     contextRef.current = empty;
@@ -157,6 +186,11 @@ export function useScanFlow(
     setScanStepAck(null);
     setError(null);
     setScanFieldAutofocus(true);
+    setPhase("active");
+    phaseRef.current = "active";
+    setCompletedPayload(null);
+    setCompletedAtMs(null);
+    setCapturedSteps([]);
     bumpInput();
   }, [bumpInput]);
 
@@ -164,6 +198,10 @@ export function useScanFlow(
 
   const ingestScan = useCallback(
     async (raw: string, source: ScanSource): Promise<boolean> => {
+      if (phaseRef.current === "completed" && isReceiveAssetTag(raw)) {
+        reset();
+      }
+
       const autofocusNext = scanFieldAutofocusAfterSource(source);
       setScanFieldAutofocus(autofocusNext);
       setScanStepAck(null);
@@ -194,9 +232,9 @@ export function useScanFlow(
         };
         contextRef.current = nextCtx;
         setContext(nextCtx);
+        appendCapture(result.capture);
         if (result.ack) {
-          stepAckClearMsRef.current =
-            source === "camera" ? CAMERA_STEP_SUCCESS_DISPLAY_MS : KEYBOARD_STEP_ACK_MS;
+          stepAckClearMsRef.current = source === "camera" ? CAMERA_ALERT_HOLD_MS : KEYBOARD_STEP_ACK_MS;
           setScanStepAck(result.ack);
         }
         setStepIndex((i) => {
@@ -220,8 +258,15 @@ export function useScanFlow(
       try {
         const r = await onComplete(nextCtx);
         if (r.ok) {
+          appendCapture(result.capture);
+          contextRef.current = nextCtx;
+          setContext(nextCtx);
+          setCompletedPayload(r.payload ?? null);
+          setCompletedAtMs(Date.now());
+          setPhase("completed");
+          phaseRef.current = "completed";
+          bumpInput();
           onCompleteSuccess?.(r.payload);
-          reset();
           return true;
         } else {
           setError(r.message);
@@ -247,7 +292,15 @@ export function useScanFlow(
         setSubmitBusy(false);
       }
     },
-    [bumpInput, definition.steps, onComplete, onCompleteSuccess, reset, definition],
+    [
+      bumpInput,
+      definition.steps,
+      onComplete,
+      onCompleteSuccess,
+      reset,
+      definition,
+      appendCapture,
+    ],
   );
 
   return {
@@ -256,6 +309,10 @@ export function useScanFlow(
     stepTotal,
     currentStep,
     context,
+    phase,
+    completedPayload,
+    completedAtMs,
+    capturedSteps,
     scanFieldAutofocus,
     inputEpoch,
     scanStepAck,
@@ -271,3 +328,16 @@ export function useScanFlow(
 export function scanFlowProgress(stepIndex: number, stepTotal: number): { current: number; total: number } {
   return { current: Math.min(stepIndex + 1, stepTotal), total: stepTotal };
 }
+
+/**
+ * Store / deploy / transfer leave `stepIndex` on the final step after API success (unlike receive, which resets).
+ * Swap visible step chrome to completion copy so headers and the camera overlay don’t stay on the last QR label.
+ */
+export const TECH_WORKFLOW_COMPLETED_SURFACE_COPY = {
+  instruction:
+    "Review the success banner above. Scan another asset tag to start again, or close the scanner when finished.",
+  cameraModalTitle: "Workflow complete",
+  cameraInstruction:
+    "Review the success banner on this page. Close when finished, or scan the next asset tag to continue.",
+  placeholder: "Scan next asset tag…",
+} as const;

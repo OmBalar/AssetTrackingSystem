@@ -35,8 +35,7 @@ export function ScanWorkflowStatus({
         >
           <p className="font-medium">{error}</p>
           <p className="mt-1 text-xs text-amber-900/90">
-            Wrong QR, invalid format, or mismatch — fix it and scan again. With the camera open, this alert also appears above the
-            live preview.
+            Wrong QR, invalid format, or mismatch — fix it and scan again.
           </p>
         </div>
       ) : null}

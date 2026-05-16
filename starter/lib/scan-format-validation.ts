@@ -1,4 +1,4 @@
-import { parseCompactLocationBarcode } from "@/lib/scan-flow";
+import { parseCompactLocationBarcode, parseDeployLocationBarcode } from "@/lib/scan-flow";
 import { SCAN_INVALID_RECEIVE_EQUIPMENT, SCAN_INVALID_SERIAL } from "@/lib/scan-messages";
 import type { AssetClass } from "@/lib/types";
 
@@ -25,11 +25,15 @@ export function isValidCompactLocationPayload(raw: string): boolean {
   return parseCompactLocationBarcode(raw).ok;
 }
 
+export function isValidDeployLocationPayload(raw: string): boolean {
+  return parseDeployLocationBarcode(raw).ok;
+}
+
 export function isValidCustodianBadgePayload(raw: string): boolean {
   return CUSTODIAN_BADGE_PATTERN.test(raw.trim());
 }
 
-/** Deploy single-field QR — not a three-part compact location barcode. */
+/** Receive/store compact QR — exactly three non-empty slash segments (not deploy). */
 export function looksLikeCompactLocationBarcode(raw: string): boolean {
   const t = raw.trim();
   if (!t || t.includes("|")) return false;
@@ -37,13 +41,13 @@ export function looksLikeCompactLocationBarcode(raw: string): boolean {
   return parts.length === 3 && parts.every((p) => p.trim().length > 0);
 }
 
-const ASSET_CLASS_SET: ReadonlySet<AssetClass> = new Set([
-  "instrument",
-  "compute",
-  "network",
-  "power",
-  "consumable_durable",
-]);
+/** Deploy compact QR — exactly four non-empty slash segments (SITE/ROOM/RACK/RU). */
+export function looksLikeDeployLocationBarcode(raw: string): boolean {
+  const t = raw.trim();
+  if (!t || t.includes("|")) return false;
+  const parts = t.split("/");
+  return parts.length === 4 && parts.every((p) => p.trim().length > 0);
+}
 
 /** Receive step 2 — one QR encodes serial, manufacturer, model, and asset class. */
 export function formatReceiveEquipmentQr(
@@ -85,14 +89,7 @@ export function parseReceiveEquipmentQr(raw: string): ParsedReceiveEquipment {
   if (!isValidSerialPayload(serial)) {
     return { ok: false, error: SCAN_INVALID_SERIAL };
   }
-  const ac = acRaw.toLowerCase() as AssetClass;
-  if (!ASSET_CLASS_SET.has(ac)) {
-    return {
-      ok: false,
-      error: `Unknown asset_type “${acRaw}”. Use instrument, compute, network, power, or consumable_durable.`,
-    };
-  }
-  return { ok: true, serial, manufacturer, model, asset_class: ac };
+  return { ok: true, serial, manufacturer, model, asset_class: acRaw };
 }
 
 export type ParsedReceiveAssetTypeField =
@@ -105,15 +102,8 @@ export function parseReceiveAssetTypeField(raw: string): ParsedReceiveAssetTypeF
   if (!t) {
     return {
       ok: false,
-      error: "Asset type required — instrument, compute, network, power, or consumable_durable.",
+      error: "Asset type required — enter a label for this equipment (any short description).",
     };
   }
-  const ac = t.toLowerCase() as AssetClass;
-  if (!ASSET_CLASS_SET.has(ac)) {
-    return {
-      ok: false,
-      error: `Unknown asset type “${t}”. Use instrument, compute, network, power, or consumable_durable.`,
-    };
-  }
-  return { ok: true, asset_class: ac };
+  return { ok: true, asset_class: t };
 }

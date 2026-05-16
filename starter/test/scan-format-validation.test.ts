@@ -4,11 +4,17 @@ import {
   isValidAssetTagPayload,
   isValidCompactLocationPayload,
   isValidCustodianBadgePayload,
+  isValidDeployLocationPayload,
   isValidSerialPayload,
   looksLikeCompactLocationBarcode,
+  looksLikeDeployLocationBarcode,
   parseReceiveAssetTypeField,
   parseReceiveEquipmentQr,
 } from "@/lib/scan-format-validation";
+import {
+  formatDeployLocationBarcode,
+  parseDeployLocationBarcode,
+} from "@/lib/scan-flow";
 
 describe("scan-format-validation", () => {
   it("accepts asset tag payloads", () => {
@@ -31,6 +37,16 @@ describe("scan-format-validation", () => {
     expect(isValidCompactLocationPayload("Lab-Building-A/Receiving")).toBe(false);
     expect(looksLikeCompactLocationBarcode("Lab-Building-A/Receiving/DOCK-2")).toBe(true);
     expect(looksLikeCompactLocationBarcode("Lab-Building-A")).toBe(false);
+  });
+
+  it("detects deploy location QR payloads (four segments)", () => {
+    const v = formatDeployLocationBarcode("Lab-Building-A", "Bay-12", "B-04", "U16");
+    expect(isValidDeployLocationPayload(v)).toBe(true);
+    expect(parseDeployLocationBarcode(v).ok).toBe(true);
+    expect(looksLikeDeployLocationBarcode(v)).toBe(true);
+    expect(looksLikeDeployLocationBarcode("Lab-Building-A/Receiving/DOCK-2")).toBe(false);
+    expect(looksLikeCompactLocationBarcode(v)).toBe(false);
+    expect(isValidDeployLocationPayload("Lab-Building-A/Receiving/DOCK-2")).toBe(false);
   });
 
   it("parses receive equipment QR payloads", () => {
@@ -60,14 +76,17 @@ describe("scan-format-validation", () => {
     expect(r.ok).toBe(false);
   });
 
-  it("parses manual receive asset type field", () => {
+  it("parses manual receive asset type field (any non-empty label)", () => {
     expect(parseReceiveAssetTypeField("instrument")).toEqual({ ok: true, asset_class: "instrument" });
-    expect(parseReceiveAssetTypeField("COMPUTE")).toEqual({ ok: true, asset_class: "compute" });
+    expect(parseReceiveAssetTypeField("COMPUTE")).toEqual({ ok: true, asset_class: "COMPUTE" });
     expect(parseReceiveAssetTypeField("network")).toEqual({ ok: true, asset_class: "network" });
+    expect(parseReceiveAssetTypeField("laptop")).toEqual({ ok: true, asset_class: "laptop" });
+    expect(parseReceiveAssetTypeField("  Custom-class  ")).toEqual({ ok: true, asset_class: "Custom-class" });
   });
 
-  it("rejects unknown asset type field", () => {
-    expect(parseReceiveAssetTypeField("laptop").ok).toBe(false);
+  it("rejects empty asset type field", () => {
+    expect(parseReceiveAssetTypeField("").ok).toBe(false);
+    expect(parseReceiveAssetTypeField("   ").ok).toBe(false);
   });
 
   it("accepts custodian badge payloads", () => {

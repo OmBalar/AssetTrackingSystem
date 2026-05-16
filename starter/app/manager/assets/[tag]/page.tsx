@@ -1,21 +1,36 @@
 import { ManagerAssetDetail } from "@/components/ManagerAssetDetail";
-import { Suspense } from "react";
+import { sanitizeManagerListQueryString } from "@/lib/manager-list-params";
 
-export default async function ManagerAssetDetailPage({
-  params,
-}: {
-  params: Promise<{ tag: string }>;
+function segmentFirst(v: string | string[] | undefined): string {
+  if (typeof v === "string") return v;
+  if (Array.isArray(v) && typeof v[0] === "string") return v[0];
+  return "";
+}
+
+function firstSearchParam(v: string | string[] | undefined): string | undefined {
+  const s = segmentFirst(v);
+  return s !== "" ? s : undefined;
+}
+
+/** Matches Next.js generated `PageProps` (promised `params` / `searchParams`). */
+export default async function ManagerAssetDetailPage(props: {
+  params?: Promise<{ tag?: string | string[] }>;
+  searchParams?: Promise<{ back?: string | string[] }>;
 }) {
-  const { tag } = await params;
+  const [resolvedParams, resolvedSearch] = await Promise.all([
+    props.params ?? Promise.resolve({}),
+    props.searchParams ?? Promise.resolve({}),
+  ]);
+
+  const p = resolvedParams as { tag?: string | string[] };
+  const sp = resolvedSearch as { back?: string | string[] };
+
+  const routeTagRaw = segmentFirst(p.tag);
+  const rawBack = firstSearchParam(sp.back);
+  const safeBack = sanitizeManagerListQueryString(rawBack ?? "");
+  const managerListHref = safeBack !== "" ? `/manager?${safeBack}` : "/manager";
+
   return (
-    <Suspense
-      fallback={
-        <div className="rounded-xl border border-gray-200 bg-white p-8 text-center text-sm text-gray-500 shadow-sm">
-          Loading asset…
-        </div>
-      }
-    >
-      <ManagerAssetDetail routeTag={decodeURIComponent(tag)} />
-    </Suspense>
+    <ManagerAssetDetail routeTag={decodeURIComponent(routeTagRaw)} managerListHref={managerListHref} />
   );
 }

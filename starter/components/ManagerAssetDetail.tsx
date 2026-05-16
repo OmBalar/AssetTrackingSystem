@@ -3,10 +3,8 @@
 import { api, ApiError } from "@/lib/api-client";
 import { compactLocation, formatDateTimeShort, labelTitleCase } from "@/lib/format-display";
 import { formatApiErrorForUser } from "@/lib/format-api-error";
-import { sanitizeManagerListQueryString } from "@/lib/manager-list-params";
 import type { Asset, Event as AssetEvent } from "@/lib/types";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
 function summarizeStateTransition(ev: AssetEvent): string {
@@ -15,7 +13,14 @@ function summarizeStateTransition(ev: AssetEvent): string {
   return `${labelTitleCase(ev.from_state)} → ${to}`;
 }
 
-export function ManagerAssetDetail({ routeTag }: { routeTag: string }) {
+export function ManagerAssetDetail({
+  routeTag,
+  managerListHref,
+}: {
+  routeTag: string;
+  /** Canonical “back to filtered list” target (built server-side from `?back=`). */
+  managerListHref: string;
+}) {
   const tag = routeTag.trim().toUpperCase();
   const [loading, setLoading] = useState(true);
   const [asset, setAsset] = useState<Asset | null>(null);
@@ -72,7 +77,7 @@ export function ManagerAssetDetail({ routeTag }: { routeTag: string }) {
   if (notFound) {
     return (
       <div className="space-y-4">
-        <BackLink />
+        <BackLink href={managerListHref} />
         <div className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm space-y-2">
           <h1 className="text-xl font-bold text-gray-900">Asset not found</h1>
           <p className="text-gray-600 text-sm">
@@ -93,7 +98,7 @@ export function ManagerAssetDetail({ routeTag }: { routeTag: string }) {
   if (errorMessage) {
     return (
       <div className="space-y-4">
-        <BackLink />
+        <BackLink href={managerListHref} />
         <div className="rounded-xl border border-red-100 bg-red-50/70 p-6 text-red-900 text-sm shadow-sm">
           {errorMessage}
         </div>
@@ -109,7 +114,7 @@ export function ManagerAssetDetail({ routeTag }: { routeTag: string }) {
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="space-y-1">
-          <BackLink />
+          <BackLink href={managerListHref} />
           <div className="flex flex-wrap items-baseline gap-3">
             <h1 className="text-2xl font-bold text-gray-900 tabular-nums">{asset.asset_tag}</h1>
             <span className="inline-flex rounded-full border border-gray-300 bg-gray-50 px-2.5 py-0.5 text-xs font-medium text-gray-800">
@@ -231,12 +236,7 @@ export function ManagerAssetDetail({ routeTag }: { routeTag: string }) {
   );
 }
 
-function BackLink() {
-  const searchParams = useSearchParams();
-  const rawBack = searchParams.get("back");
-  const safe = sanitizeManagerListQueryString(rawBack);
-  const href = safe ? `/manager?${safe}` : "/manager";
-
+function BackLink({ href }: { href: string }) {
   return (
     <Link
       href={href}
