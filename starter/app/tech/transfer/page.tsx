@@ -52,15 +52,44 @@ export default function TechTransferPage() {
         details={assetSuccessDetailRows(updatedAsset)}
         capturedSteps={flow.capturedSteps}
         persistHint="Expand for full details — hides when you scan the next asset tag (e.g. C0123456)."
+        placement={scanUxMode === "camera" ? "bottom" : "top"}
       />
     ) : null;
 
+  const pageVerticalInset =
+    successRibbon == null
+      ? " pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+      : scanUxMode === "camera"
+        ? " pb-[calc(6rem+env(safe-area-inset-bottom))]"
+        : " pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[5.25rem]";
+
+  const assetSummaryPanel =
+    !workflowDone && flow.context.asset && flow.stepIndex > 0 ? (
+      <div className="space-y-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
+        <div>
+          <span className="font-medium">{flow.context.asset.asset_tag}</span>
+          {" · "}
+          <span className="font-semibold">{humanizeState(flow.context.asset.state)}</span>
+        </div>
+        <div className="text-xs text-gray-600">
+          <span className="font-medium text-gray-700">Custodian now:</span>{" "}
+          <span className="font-mono">{flow.context.asset.custodian}</span>
+        </div>
+        <div className="text-xs text-gray-600">
+          <span className="font-medium text-gray-700">Location:</span>{" "}
+          <span className="font-mono">{compactLocation(flow.context.asset.location)}</span>
+        </div>
+        {me !== flow.context.asset.custodian ? (
+          <p className="mt-2 rounded border border-amber-100 bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
+            Custodian on file is <span className="font-mono">{flow.context.asset.custodian}</span>; you&apos;re{" "}
+            <span className="font-mono">{me}</span> (operator is still you for this scan).
+          </p>
+        ) : null}
+      </div>
+    ) : null;
+
   return (
-    <div
-      className={`mx-auto max-w-lg space-y-6 pb-[max(1.25rem,env(safe-area-inset-bottom))]${
-        successRibbon ? " pt-[5.25rem]" : ""
-      }`}
-    >
+    <div className={`mx-auto max-w-lg space-y-6${pageVerticalInset}`}>
       <h1 className="text-2xl font-bold text-gray-900">Custody handoff</h1>
 
       <ScanWorkflowStatus error={workflowDone ? null : flow.error} />
@@ -77,35 +106,15 @@ export default function TechTransferPage() {
 
         <p className="text-sm leading-snug text-gray-700">{surfaceInstruction}</p>
 
-        {!workflowDone && flow.context.asset && flow.stepIndex > 0 ? (
-          <div className="space-y-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
-            <div>
-              <span className="font-medium">{flow.context.asset.asset_tag}</span>
-              {" · "}
-              <span className="font-semibold">{humanizeState(flow.context.asset.state)}</span>
-            </div>
-            <div className="text-xs text-gray-600">
-              <span className="font-medium text-gray-700">Custodian now:</span>{" "}
-              <span className="font-mono">{flow.context.asset.custodian}</span>
-            </div>
-            <div className="text-xs text-gray-600">
-              <span className="font-medium text-gray-700">Location:</span>{" "}
-              <span className="font-mono">{compactLocation(flow.context.asset.location)}</span>
-            </div>
-            {me !== flow.context.asset.custodian ? (
-              <p className="mt-2 rounded border border-amber-100 bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
-                Custodian on file is <span className="font-mono">{flow.context.asset.custodian}</span>; you&apos;re{" "}
-                <span className="font-mono">{me}</span> (operator is still you for this scan).
-              </p>
-            ) : null}
-          </div>
-        ) : null}
+        {scanUxMode !== "keyboard" ? assetSummaryPanel : null}
 
-        <TechScanCapturedSteps
-          items={flow.capturedSteps}
-          completedSession={workflowDone}
-          nextStepLabel={!workflowDone ? ui.stepLabel : null}
-        />
+        {scanUxMode !== "keyboard" ? (
+          <TechScanCapturedSteps
+            items={flow.capturedSteps}
+            completedSession={workflowDone}
+            nextStepLabel={!workflowDone ? ui.stepLabel : null}
+          />
+        ) : null}
 
         <TechScanCapture
           scanInputKey={flow.inputEpoch}
@@ -121,13 +130,27 @@ export default function TechTransferPage() {
           scanStepAck={workflowDone ? null : flow.scanStepAck}
           workflowError={flow.error}
           workflowSuccessMessage={
-            workflowDone ? "Custody handoff recorded — details are in the banner above." : null
+            workflowDone
+              ? scanUxMode === "camera"
+                ? "Custody handoff recorded — details are in the banner below."
+                : "Custody handoff recorded — details are in the banner above."
+              : null
           }
           stepIndex={flow.stepIndex}
           stepLabel={workflowDone ? undefined : ui.stepLabel}
           cameraSessionCapturedSteps={flow.capturedSteps}
           onScan={onScan}
         />
+
+        {scanUxMode === "keyboard" ? (
+          <TechScanCapturedSteps
+            items={flow.capturedSteps}
+            completedSession={workflowDone}
+            nextStepLabel={!workflowDone ? ui.stepLabel : null}
+          />
+        ) : null}
+
+        {scanUxMode === "keyboard" ? assetSummaryPanel : null}
 
         {!flow.busy ? (
           <button

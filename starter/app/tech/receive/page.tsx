@@ -84,8 +84,12 @@ function ReceiveFlowBody({ mode, onToggleInputMethod }: { mode: ReceiveWorkflowM
 
   return (
     <div
-      className={`mx-auto max-w-lg space-y-6 pb-[max(1.25rem,env(safe-area-inset-bottom))]${
-        receiveConfirm ? " pt-[5.25rem]" : ""
+      className={`mx-auto max-w-lg space-y-6${
+        receiveConfirm == null
+          ? " pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+          : mode === "camera"
+            ? " pb-[calc(6rem+env(safe-area-inset-bottom))]"
+            : " pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[5.25rem]"
       }`}
     >
       <h1 className="text-2xl font-bold text-gray-900">Receiving — dock intake</h1>
@@ -163,6 +167,7 @@ function ReceiveFlowBody({ mode, onToggleInputMethod }: { mode: ReceiveWorkflowM
           details={assetSuccessDetailRows(receiveConfirm.asset)}
           capturedSteps={receiveConfirm.capturedSteps}
           persistHint="Expand for full details — hides when you scan the next asset tag (e.g. C0123456)."
+          placement={mode === "camera" ? "bottom" : "top"}
         />
       ) : null}
     </div>

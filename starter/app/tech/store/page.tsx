@@ -58,15 +58,32 @@ function StoreFlowBody({ mode, onToggleInputMethod }: { mode: StoreWorkflowMode;
         details={assetSuccessDetailRows(storedAsset)}
         capturedSteps={flow.capturedSteps}
         persistHint="Expand for full details — hides when you scan the next asset tag (e.g. C0123456)."
+        placement={mode === "camera" ? "bottom" : "top"}
       />
     ) : null;
 
+  const pageVerticalInset =
+    successRibbon == null
+      ? " pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+      : mode === "camera"
+        ? " pb-[calc(6rem+env(safe-area-inset-bottom))]"
+        : " pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[5.25rem]";
+
+  const assetSummaryPanel =
+    !workflowDone && flow.context.asset && flow.stepIndex > 0 ? (
+      <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
+        <span className="font-medium">{flow.context.asset.asset_tag}</span>
+        {" · state "}
+        <span className="font-semibold">{humanizeState(flow.context.asset.state)}</span>
+        <span className="mt-1 block text-xs text-gray-600">
+          Current ops location:{" "}
+          <span className="font-mono">{compactLocation(flow.context.asset.location)}</span>
+        </span>
+      </div>
+    ) : null;
+
   return (
-    <div
-      className={`mx-auto max-w-lg space-y-6 pb-[max(1.25rem,env(safe-area-inset-bottom))]${
-        successRibbon ? " pt-[5.25rem]" : ""
-      }`}
-    >
+    <div className={`mx-auto max-w-lg space-y-6${pageVerticalInset}`}>
       <h1 className="text-2xl font-bold text-gray-900">Store — put-away</h1>
 
       <ScanWorkflowStatus error={workflowDone ? null : flow.error} />
@@ -83,17 +100,7 @@ function StoreFlowBody({ mode, onToggleInputMethod }: { mode: StoreWorkflowMode;
 
         <p className="text-sm leading-snug text-gray-700">{surfaceInstruction}</p>
 
-        {!workflowDone && flow.context.asset && flow.stepIndex > 0 ? (
-          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
-            <span className="font-medium">{flow.context.asset.asset_tag}</span>
-            {" · state "}
-            <span className="font-semibold">{humanizeState(flow.context.asset.state)}</span>
-            <span className="mt-1 block text-xs text-gray-600">
-              Current ops location:{" "}
-              <span className="font-mono">{compactLocation(flow.context.asset.location)}</span>
-            </span>
-          </div>
-        ) : null}
+        {mode !== "manual" ? assetSummaryPanel : null}
 
         {mode === "camera" && flow.stepIndex === 1 && !workflowDone ? (
           <p className="text-sm text-gray-700">
@@ -101,11 +108,13 @@ function StoreFlowBody({ mode, onToggleInputMethod }: { mode: StoreWorkflowMode;
           </p>
         ) : null}
 
-        <TechScanCapturedSteps
-          items={flow.capturedSteps}
-          completedSession={workflowDone}
-          nextStepLabel={!workflowDone ? ui.stepLabel : null}
-        />
+        {mode !== "manual" ? (
+          <TechScanCapturedSteps
+            items={flow.capturedSteps}
+            completedSession={workflowDone}
+            nextStepLabel={!workflowDone ? ui.stepLabel : null}
+          />
+        ) : null}
 
         <TechScanCapture
           scanInputKey={flow.inputEpoch}
@@ -120,12 +129,28 @@ function StoreFlowBody({ mode, onToggleInputMethod }: { mode: StoreWorkflowMode;
           cameraInstruction={cameraInstruction}
           scanStepAck={workflowDone ? null : flow.scanStepAck}
           workflowError={flow.error}
-          workflowSuccessMessage={workflowDone ? "Put-away saved — details are in the banner above." : null}
+          workflowSuccessMessage={
+            workflowDone
+              ? mode === "camera"
+                ? "Put-away saved — details are in the banner below."
+                : "Put-away saved — details are in the banner above."
+              : null
+          }
           stepIndex={flow.stepIndex}
           stepLabel={workflowDone ? undefined : ui.stepLabel}
           cameraSessionCapturedSteps={flow.capturedSteps}
           onScan={onScan}
         />
+
+        {mode === "manual" ? (
+          <TechScanCapturedSteps
+            items={flow.capturedSteps}
+            completedSession={workflowDone}
+            nextStepLabel={!workflowDone ? ui.stepLabel : null}
+          />
+        ) : null}
+
+        {mode === "manual" ? assetSummaryPanel : null}
 
         {flow.lookupBusy && flow.stepIndex === 0 ? <ScanLoadingLine label="Looking up asset…" /> : null}
         {flow.submitBusy ? <ScanLoadingLine label="Storing…" /> : null}

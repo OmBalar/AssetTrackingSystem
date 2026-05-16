@@ -9,10 +9,12 @@ export type TechWorkflowSuccessBannerProps = {
   auxiliary?: string | null;
   /** Hint shown in summary when collapsed (e.g. when banner clears). */
   persistHint?: string;
+  /** Pin to viewport top (default) or bottom — bottom pairs well after completing a full-screen camera session. */
+  placement?: "top" | "bottom";
 };
 
 /**
- * Compact fixed-top success ribbon: one-line summary by default; full asset + session details inside `<details>`.
+ * Compact fixed success ribbon: one-line summary by default; full asset + session details inside `<details>`.
  * Stays until parent unmounts (e.g. next scan resets the flow). z-index above full-screen camera overlay.
  */
 export function TechWorkflowSuccessBanner({
@@ -21,15 +23,21 @@ export function TechWorkflowSuccessBanner({
   capturedSteps,
   auxiliary,
   persistHint = "Expand for full details — hides when you scan the next asset tag.",
+  placement = "top",
 }: TechWorkflowSuccessBannerProps) {
   const tagLine = details.find((r) => r.label === "Asset tag")?.value?.trim() ?? "";
   const detailCls = "break-words font-mono text-[13px] font-semibold text-gray-950";
+
+  const pinCls =
+    placement === "bottom"
+      ? "bottom-0 pb-[max(0.35rem,env(safe-area-inset-bottom))] pt-1"
+      : "top-0 pt-[max(0.35rem,env(safe-area-inset-top))] pb-1";
 
   return (
     <div
       role="status"
       aria-live="polite"
-      className="fixed inset-x-0 top-0 z-[110] flex justify-center px-3 pt-[max(0.35rem,env(safe-area-inset-top))] pb-1 pointer-events-none"
+      className={`fixed inset-x-0 z-[110] flex justify-center px-3 pointer-events-none ${pinCls}`}
     >
       <details className="pointer-events-auto w-full max-w-2xl rounded-lg border border-emerald-700/40 bg-emerald-50 shadow-md ring-1 ring-black/5">
         <summary className="cursor-pointer select-none list-none px-3 py-2 [&::-webkit-details-marker]:hidden">
@@ -50,7 +58,7 @@ export function TechWorkflowSuccessBanner({
           <p className="mt-1 text-[11px] font-medium leading-snug text-emerald-900/80">{persistHint}</p>
         </summary>
 
-        <div className="max-h-[min(40vh,320px)] overflow-y-auto border-t border-emerald-900/15 px-3 pb-3 pt-2">
+        <div className="max-h-[calc(100svh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-9rem)] overflow-y-auto border-t border-emerald-900/15 px-3 pb-3 pt-2">
           <dl className="space-y-2 text-sm leading-snug text-gray-900">
             {details.map((row) => (
               <div key={row.label} className="border-t border-emerald-900/10 pt-2 first:border-t-0 first:pt-0">

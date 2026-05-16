@@ -55,8 +55,16 @@ function DeployFlowBody({ mode, onToggleInputMethod }: { mode: DeployWorkflowMod
         details={assetSuccessDetailRows(completePayload.asset)}
         capturedSteps={flow.capturedSteps}
         persistHint="Expand for full details — hides when you scan the next asset tag (e.g. C0123456)."
+        placement={mode === "camera" ? "bottom" : "top"}
       />
     ) : null;
+
+  const pageVerticalInset =
+    successRibbon == null
+      ? " pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+      : mode === "camera"
+        ? " pb-[calc(6rem+env(safe-area-inset-bottom))]"
+        : " pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[5.25rem]";
 
   const hideCamera = mode === "manual";
   const autoCamera = mode === "camera";
@@ -71,11 +79,7 @@ function DeployFlowBody({ mode, onToggleInputMethod }: { mode: DeployWorkflowMod
   const onAssetTagStep = flow.stepIndex === 0 && !flow.context.assetTag;
 
   return (
-    <div
-      className={`mx-auto max-w-lg space-y-6 pb-[max(1.25rem,env(safe-area-inset-bottom))]${
-        successRibbon ? " pt-[5.25rem]" : ""
-      }`}
-    >
+    <div className={`mx-auto max-w-lg space-y-6${pageVerticalInset}`}>
       <h1 className="text-2xl font-bold text-gray-900">Deploy — rack in-service</h1>
 
       <ScanWorkflowStatus error={workflowDone ? null : flow.error} />
@@ -117,7 +121,13 @@ function DeployFlowBody({ mode, onToggleInputMethod }: { mode: DeployWorkflowMod
           cameraInstruction={cameraInstruction}
           scanStepAck={workflowDone ? null : flow.scanStepAck}
           workflowError={flow.error}
-          workflowSuccessMessage={workflowDone ? "Deploy saved — details are in the banner above." : null}
+          workflowSuccessMessage={
+            workflowDone
+              ? mode === "camera"
+                ? "Deploy saved — details are in the banner below."
+                : "Deploy saved — details are in the banner above."
+              : null
+          }
           stepIndex={flow.stepIndex}
           stepLabel={workflowDone ? undefined : ui.stepLabel}
           cameraSessionCapturedSteps={flow.capturedSteps}
