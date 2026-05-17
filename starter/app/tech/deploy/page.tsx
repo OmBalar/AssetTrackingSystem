@@ -161,10 +161,6 @@ function DeployFlowBody({ mode, onToggleInputMethod }: { mode: DeployWorkflowMod
           </button>
         ) : null}
       </section>
-
-      <p className="text-xs leading-snug text-gray-500">
-        Sample payloads: <span className="font-medium text-gray-700">Dev → test barcodes</span>.
-      </p>
     </div>
   );
 }

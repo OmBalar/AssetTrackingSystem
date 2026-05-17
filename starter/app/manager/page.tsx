@@ -8,9 +8,8 @@ export default function ManagerDashboardPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Manager dashboard</h1>
-          <p className="text-gray-600 mt-1 text-sm max-w-xl">
-            Filter the operations view by state, site, and custodian. Rows open the timeline and
-            event log — use Details if you prefer a clear control.
+          <p className="text-gray-600 mt-1 text-sm">
+            Filter the operations view by state, site, and custodian. Click row to open the details and event log.
           </p>
         </div>
         <Link

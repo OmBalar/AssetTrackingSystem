@@ -351,6 +351,37 @@ export function ManagerAssetList() {
         </label>
       </div>
 
+      {!listLoading && !listError && (
+        <div className="flex flex-wrap gap-3 border-b border-gray-200 bg-white px-4 py-2 text-sm text-gray-600">
+          <span>
+            <span className="font-semibold text-gray-900">{total}</span> assets
+            {stateFilter || siteFilter || custodianFilter ? " matched" : " total"}
+          </span>
+          {!stateFilter && (
+            <>
+              <span className="text-gray-300">|</span>
+              <span><span className="font-semibold text-gray-900">{allAssets.filter(a => a.state === "in_service").length}</span> in service</span>
+              <span className="text-gray-300">|</span>
+              <span><span className="font-semibold text-gray-900">{allAssets.filter(a => a.state === "stored").length}</span> stored</span>
+              <span className="text-gray-300">|</span>
+              <span><span className="font-semibold text-gray-900">{allAssets.filter(a => a.state === "received").length}</span> received</span>
+              <span className="text-gray-300">|</span>
+              <span><span className="font-semibold text-gray-900">{allAssets.filter(a => a.state === "rma_pending").length}</span> RMA pending</span>
+              <span className="text-gray-300">|</span>
+              <span><span className="font-semibold text-gray-900">{allAssets.filter(a => a.state === "disposed").length}</span> disposed</span>
+            </>
+          )}
+          {reconcileByTag && reconcileByTag.size > 0 && (
+            <>
+              <span className="text-gray-300">|</span>
+              <span className="text-amber-700">
+                <span className="font-semibold">{reconcileByTag.size}</span> flagged
+              </span>
+            </>
+          )}
+        </div>
+      )}
+
       {listError ? (
         <div className="px-4 py-6 text-center text-red-700 text-sm">{listError}</div>
       ) : null}

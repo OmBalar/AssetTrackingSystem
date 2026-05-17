@@ -13,13 +13,16 @@ function summarizeStateTransition(ev: AssetEvent): string {
   return `${labelTitleCase(ev.from_state)} → ${to}`;
 }
 
+import type { ReconciliationItem } from "@/lib/reconciliation";
+
 export function ManagerAssetDetail({
   routeTag,
   managerListHref,
+  reconciliationItem,
 }: {
   routeTag: string;
-  /** Canonical “back to filtered list” target (built server-side from `?back=`). */
   managerListHref: string;
+  reconciliationItem?: ReconciliationItem | null;
 }) {
   const tag = routeTag.trim().toUpperCase();
   const [loading, setLoading] = useState(true);
@@ -129,6 +132,28 @@ export function ManagerAssetDetail({
         </div>
       </div>
 
+      {reconciliationItem && reconciliationItem.category !== "healthy" && (
+        <div className={`rounded-xl border px-4 py-3 text-sm ${
+          reconciliationItem.category === "needs_review"
+            ? "border-red-200 bg-red-50 text-red-900"
+            : reconciliationItem.category === "drift"
+              ? "border-amber-200 bg-amber-50 text-amber-900"
+              : "border-blue-200 bg-blue-50 text-blue-900"
+        }`}>
+          <p className="font-semibold">{reconciliationItem.headline}</p>
+          <p className="mt-1 text-xs opacity-80">{reconciliationItem.explanation}</p>
+          {reconciliationItem.suggested_actions.length > 0 && (
+            <ul className="mt-2 list-disc ml-4 space-y-0.5 text-xs opacity-80">
+              {reconciliationItem.suggested_actions.map((a) => (
+                <li key={a}>{a}</li>
+              ))}
+            </ul>
+          )}
+          <Link href="/manager/reconcile" className="mt-2 inline-block text-xs font-medium underline opacity-70 hover:opacity-100">
+            View full reconciliation report →
+          </Link>
+        </div>
+      )}
       <section
         aria-labelledby="summary-heading"
         className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm"

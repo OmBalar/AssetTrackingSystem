@@ -1,5 +1,8 @@
 import { ManagerAssetDetail } from "@/components/ManagerAssetDetail";
 import { sanitizeManagerListQueryString } from "@/lib/manager-list-params";
+import { api } from "@/lib/api-client";
+import { buildReconciliationReport } from "@/lib/reconciliation";
+import type { ReconciliationItem } from "@/lib/reconciliation";
 
 function segmentFirst(v: string | string[] | undefined): string {
   if (typeof v === "string") return v;
@@ -12,7 +15,20 @@ function firstSearchParam(v: string | string[] | undefined): string | undefined 
   return s !== "" ? s : undefined;
 }
 
-/** Matches Next.js generated `PageProps` (promised `params` / `searchParams`). */
+async function getReconciliationItem(tag: string): Promise<ReconciliationItem | null> {
+  try {
+    const [assets, facilities, finance] = await Promise.all([
+      api.assets.list(),
+      api.mock.facilities(),
+      api.mock.finance(),
+    ]);
+    const report = buildReconciliationReport(assets, facilities, finance);
+    return report.items.find((i) => i.asset_tag === tag) ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export default async function ManagerAssetDetailPage(props: {
   params?: Promise<{ tag?: string | string[] }>;
   searchParams?: Promise<{ back?: string | string[] }>;
@@ -30,7 +46,14 @@ export default async function ManagerAssetDetailPage(props: {
   const safeBack = sanitizeManagerListQueryString(rawBack ?? "");
   const managerListHref = safeBack !== "" ? `/manager?${safeBack}` : "/manager";
 
+  const tag = decodeURIComponent(routeTagRaw);
+  const reconciliationItem = await getReconciliationItem(tag);
+
   return (
-    <ManagerAssetDetail routeTag={decodeURIComponent(routeTagRaw)} managerListHref={managerListHref} />
+    <ManagerAssetDetail
+      routeTag={tag}
+      managerListHref={managerListHref}
+      reconciliationItem={reconciliationItem}
+    />
   );
 }

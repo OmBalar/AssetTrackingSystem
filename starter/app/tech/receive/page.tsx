@@ -156,10 +156,6 @@ function ReceiveFlowBody({ mode, onToggleInputMethod }: { mode: ReceiveWorkflowM
         ) : null}
       </section>
 
-      <p className="text-xs leading-snug text-gray-500">
-        Sample payloads: <span className="font-medium text-gray-700">Dev → test barcodes</span>.
-      </p>
-
       {receiveConfirm ? (
         <TechWorkflowSuccessBanner
           key={receiveConfirm.bannerKey}
