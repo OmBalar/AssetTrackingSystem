@@ -34,7 +34,7 @@ export function emptyTechScanFlowContext(): TechScanFlowContext {
     manualLocRoom: "",
     manualLocRack: "",
     asset: null,
-    deploy: { site: "", room: "", rack: "", ru: "" },
+    deploy: { site: "", row: "", room: "", rack: "", ru: "" },
     receiverId: "",
   };
 }
