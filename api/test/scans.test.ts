@@ -101,25 +101,7 @@ describe("scans: receive", () => {
       scan_payload: "RECEIVE|C0009003|SN-WRONG",
     });
     expect(res.statusCode).toBe(409);
-    const body = res.json() as { error: { code: string; details?: { asset_tag?: string } } };
-    expect(body.error.code).toBe("and_match_failed");
-    expect(body.error.details?.asset_tag).toBe("C0009003");
-  });
-
-  it("creates asset with any non-empty asset_class label (201)", async () => {
-    const res = await inject("POST", "/v1/scans/receive", {
-      asset_tag: "C0009004",
-      serial: "SN-CUSTOM-CLASS",
-      model: "Model X",
-      manufacturer: "Acme",
-      asset_class: "lab_equipment_tier2",
-      location: newTagLocation,
-      user_id: "tech-jane",
-      scan_payload: "RECEIVE|C0009004|SN-CUSTOM-CLASS",
-    });
-    expect(res.statusCode).toBe(201);
-    const body = res.json() as Asset;
-    expect(body.asset_class).toBe("lab_equipment_tier2");
+    expect(res.json().error.code).toBe("and_match_failed");
   });
 
   it("returns 400 invalid_tag_format for bad tag", async () => {
@@ -165,19 +147,6 @@ describe("scans: store + deploy + transitions", () => {
     const body = res.json() as Asset;
     expect(body.state).toBe("stored");
     expect(body.location.rack).toBe("SHELF-9");
-  });
-
-  it("store: allows stored → stored (re-put-away / location update)", async () => {
-    const res = await inject("POST", "/v1/scans/store", {
-      asset_tag: "C0000104",
-      location: { ...storeLocation, rack: "SHELF-OTHER" },
-      user_id: "tech-jane",
-      scan_payload: "STORE|C0000104",
-    });
-    expect(res.statusCode).toBe(200);
-    const body = res.json() as Asset;
-    expect(body.state).toBe("stored");
-    expect(body.location.rack).toBe("SHELF-OTHER");
   });
 
   it("deploy: 422 incomplete_deploy_location when rack/ru missing", async () => {

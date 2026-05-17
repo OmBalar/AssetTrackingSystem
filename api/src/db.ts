@@ -79,17 +79,13 @@ function seedDatabase(db: Database.Database): void {
     VALUES (@id, @asset_tag, @event_type, @from_state, @to_state, @from_location_json, @to_location_json, @user_id, @scan_payload, @timestamp)
   `);
 
-  function receiveDockForSeed(assetTag: string, assetSite: string): Location {
-    const digits = assetTag.replace(/\D/g, "");
-    const n = parseInt(digits, 10) || 0;
-    return {
-      site: assetSite,
-      room: "Receiving",
-      row: null,
-      rack: `DOCK-${(n % 4) + 1}`,
-      ru: null,
-    };
-  }
+  const receivingLoc: Location = {
+    site: "Lab-Building-A",
+    room: "Receiving",
+    row: null,
+    rack: "DOCK-1",
+    ru: null,
+  };
 
   const tx = db.transaction(() => {
     for (const asset of [...SEED_ASSETS, ...PROCEDURAL_ASSETS]) {
@@ -116,12 +112,6 @@ function seedDatabase(db: Database.Database): void {
         ? asset.custodian
         : "tech-carlos";
 
-      const path = pathToState(asset.state);
-      const receiveToLoc =
-        path.length === 0
-          ? asset.location
-          : receiveDockForSeed(asset.asset_tag, asset.location.site);
-
       insertEvent.run({
         id: ulid(),
         asset_tag: asset.asset_tag,
@@ -129,7 +119,7 @@ function seedDatabase(db: Database.Database): void {
         from_state: null,
         to_state: "received",
         from_location_json: null,
-        to_location_json: JSON.stringify(receiveToLoc),
+        to_location_json: JSON.stringify(receivingLoc),
         user_id: userId,
         scan_payload: `RECEIVE|${asset.asset_tag}|${asset.serial}`,
         timestamp: initialReceiveAt,
@@ -137,8 +127,9 @@ function seedDatabase(db: Database.Database): void {
 
       baseTime += stepMs;
       let currentState: AssetState = "received";
-      let currentLoc: Location = receiveToLoc;
+      let currentLoc: Location = receivingLoc;
 
+      const path = pathToState(asset.state);
       for (const via of path) {
         const nextState = findTransition(currentState, via);
         if (!nextState) break;

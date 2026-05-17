@@ -2,8 +2,13 @@ import { z } from "zod";
 
 export const ASSET_TAG_REGEX = /^C\d{7}$/;
 
-/** Stored as plain text — not restricted to a fixed set (labels vary by site). */
-export const AssetClassSchema = z.string().min(1);
+export const AssetClassSchema = z.enum([
+  "instrument",
+  "compute",
+  "network",
+  "power",
+  "consumable_durable",
+]);
 export type AssetClass = z.infer<typeof AssetClassSchema>;
 
 export const AssetStateSchema = z.enum([

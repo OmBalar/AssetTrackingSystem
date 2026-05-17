@@ -23,7 +23,7 @@ export async function scansRoutes(app: FastifyInstance): Promise<void> {
   app.post("/v1/scans/receive", async (req, reply) => {
     const parse = ReceiveScanInputSchema.safeParse(req.body);
     if (!parse.success) {
-      return sendError(reply, 422, "invalid_receive_payload", "Invalid receive payload", {
+      return sendError(reply, 422, "invalid_location", "Invalid receive payload", {
         issues: parse.error.issues,
       });
     }
@@ -51,7 +51,6 @@ export async function scansRoutes(app: FastifyInstance): Promise<void> {
           "and_match_failed",
           "asset_tag already exists with a different serial",
           {
-            asset_tag: input.asset_tag,
             expected_serial: existing.serial,
             provided_serial: input.serial,
           },

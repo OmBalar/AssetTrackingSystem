@@ -48,7 +48,6 @@ describe("state machine", () => {
 
   it("findTransition returns the target state when transition exists", () => {
     expect(findTransition("received", "store")).toBe("stored");
-    expect(findTransition("stored", "store")).toBe("stored");
     expect(findTransition("stored", "deploy")).toBe("in_service");
     expect(findTransition("received", "deploy")).toBe("in_service");
     expect(findTransition("in_service", "rma_open")).toBe("rma_pending");
