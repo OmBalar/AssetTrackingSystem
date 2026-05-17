@@ -1,96 +1,64 @@
 "use client";
 
 import { ScanLoadingLine, ScanWorkflowStatus } from "@/components/ScanWorkflowStatus";
+import { TechWorkflowSuccessBanner } from "@/components/TechWorkflowSuccessBanner";
 import { TechScanCapturedSteps } from "@/components/TechScanCapturedSteps";
 import { TechScanCapture } from "@/components/TechScanCapture";
 import { TechScanStepHeader } from "@/components/TechScanStepHeader";
-import { TechWorkflowSuccessBanner } from "@/components/TechWorkflowSuccessBanner";
-import { getCurrentUserId } from "@/lib/auth";
 import type { ScanSource } from "@/lib/scan-flow";
-import { assetSuccessDetailRows, compactLocation, humanizeState } from "@/lib/tech-scan-helpers";
-import {
-  TECH_WORKFLOW_COMPLETED_SURFACE_COPY,
-  scanFlowProgress,
-  useScanFlow,
-} from "@/lib/tech-scan-flow";
+import { assetSuccessDetailRows } from "@/lib/tech-scan-helpers";
+import { scanFlowProgress, useScanFlow } from "@/lib/tech-scan-flow";
 import { createTransferWorkflowDefinition } from "@/lib/tech-scan-workflows";
+import { getCurrentUserId } from "@/lib/auth";
 import type { Asset } from "@/lib/types";
 import { useCallback, useMemo, useState } from "react";
 
-type TransferScanUxMode = "keyboard" | "camera";
+export type TransferWorkflowMode = "camera" | "manual";
 
-export default function TechTransferPage() {
-  const [scanUxMode, setScanUxMode] = useState<TransferScanUxMode>("keyboard");
-
-  const me = getCurrentUserId();
-  const workflow = useMemo(() => createTransferWorkflowDefinition(me), [me]);
-
+function TransferFlowBody({
+  mode,
+  onToggleInputMethod,
+}: {
+  mode: TransferWorkflowMode;
+  onToggleInputMethod: () => void;
+}) {
+  const workflow = useMemo(() => createTransferWorkflowDefinition(getCurrentUserId()), []);
   const flow = useScanFlow(workflow);
 
   const { current: stepNum, total: stepTotal } = scanFlowProgress(flow.stepIndex, flow.stepTotal);
   const ui = flow.currentStep.ui;
   const workflowDone = flow.phase === "completed";
-  const surfaceInstruction = workflowDone ? TECH_WORKFLOW_COMPLETED_SURFACE_COPY.instruction : ui.instruction;
-  const cameraModalTitle = workflowDone ? TECH_WORKFLOW_COMPLETED_SURFACE_COPY.cameraModalTitle : ui.cameraModalTitle;
-  const cameraInstruction = workflowDone
-    ? TECH_WORKFLOW_COMPLETED_SURFACE_COPY.cameraInstruction
-    : ui.instruction;
-  const scanPlaceholder = workflowDone ? TECH_WORKFLOW_COMPLETED_SURFACE_COPY.placeholder : ui.placeholder;
-  const updatedAsset =
-    workflowDone && flow.completedPayload ? (flow.completedPayload as Asset) : null;
+  const completedPayload = workflowDone && flow.completedPayload ? (flow.completedPayload as { asset: Asset }) : null;
 
   const onScan = useCallback(
     (value: string, meta?: { source: ScanSource }) => flow.ingestScan(value, meta?.source ?? "keyboard"),
     [flow.ingestScan],
   );
 
+  const hideCamera = mode === "manual";
+  const autoCamera = mode === "camera";
+  const onAssetTagStep = flow.stepIndex === 0 && !flow.context.assetTag;
+
   const successRibbon =
-    workflowDone && updatedAsset && flow.completedAtMs !== null ? (
+    workflowDone && completedPayload?.asset && flow.completedAtMs !== null ? (
       <TechWorkflowSuccessBanner
         key={flow.completedAtMs}
-        headline="Custody transfer recorded successfully"
-        details={assetSuccessDetailRows(updatedAsset)}
+        headline="Custody transfer completed"
+        details={assetSuccessDetailRows(completedPayload.asset)}
         capturedSteps={flow.capturedSteps}
-        persistHint="Expand for full details — hides when you scan the next asset tag (e.g. C0123456)."
-        placement={scanUxMode === "camera" ? "bottom" : "top"}
+        persistHint="Expand for full details — hides when you scan the next asset tag."
+        placement="bottom"
       />
     ) : null;
 
   const pageVerticalInset =
-    successRibbon == null
-      ? " pb-[max(1.25rem,env(safe-area-inset-bottom))]"
-      : scanUxMode === "camera"
-        ? " pb-[calc(6rem+env(safe-area-inset-bottom))]"
-        : " pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[5.25rem]";
-
-  const assetSummaryPanel =
-    !workflowDone && flow.context.asset && flow.stepIndex > 0 ? (
-      <div className="space-y-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-800">
-        <div>
-          <span className="font-medium">{flow.context.asset.asset_tag}</span>
-          {" · "}
-          <span className="font-semibold">{humanizeState(flow.context.asset.state)}</span>
-        </div>
-        <div className="text-xs text-gray-600">
-          <span className="font-medium text-gray-700">Custodian now:</span>{" "}
-          <span className="font-mono">{flow.context.asset.custodian}</span>
-        </div>
-        <div className="text-xs text-gray-600">
-          <span className="font-medium text-gray-700">Location:</span>{" "}
-          <span className="font-mono">{compactLocation(flow.context.asset.location)}</span>
-        </div>
-        {me !== flow.context.asset.custodian ? (
-          <p className="mt-2 rounded border border-amber-100 bg-amber-50 px-2 py-1.5 text-xs text-amber-900">
-            Custodian on file is <span className="font-mono">{flow.context.asset.custodian}</span>; you&apos;re{" "}
-            <span className="font-mono">{me}</span> (operator is still you for this scan).
-          </p>
-        ) : null}
-      </div>
-    ) : null;
+  successRibbon == null
+    ? " pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+    : " pb-[calc(6rem+env(safe-area-inset-bottom))]";
 
   return (
     <div className={`mx-auto max-w-lg space-y-6${pageVerticalInset}`}>
-      <h1 className="text-2xl font-bold text-gray-900">Custody handoff</h1>
+      <h1 className="text-2xl font-bold text-gray-900">Custody transfer</h1>
 
       <ScanWorkflowStatus error={workflowDone ? null : flow.error} />
 
@@ -104,66 +72,43 @@ export default function TechTransferPage() {
           workflowCompleted={workflowDone}
         />
 
-        <p className="text-sm leading-snug text-gray-700">{surfaceInstruction}</p>
-
-        {scanUxMode !== "keyboard" ? assetSummaryPanel : null}
-
-        {scanUxMode !== "keyboard" ? (
-          <TechScanCapturedSteps
-            items={flow.capturedSteps}
-            completedSession={workflowDone}
-            nextStepLabel={!workflowDone ? ui.stepLabel : null}
-          />
-        ) : null}
+        <p className="text-sm leading-snug text-gray-700">{ui.instruction}</p>
 
         <TechScanCapture
           scanInputKey={flow.inputEpoch}
           disabled={flow.busy}
           autoFocus={flow.scanFieldAutofocus}
-          autoOpenCameraOnStepChange={scanUxMode === "camera"}
-          omitInlineModeControls
-          onCameraSessionDismissed={scanUxMode === "camera" ? () => setScanUxMode("keyboard") : undefined}
+          hideCameraOption={hideCamera}
+          autoOpenCameraOnStepChange={autoCamera}
+          onCameraSessionDismissed={mode === "camera" ? onToggleInputMethod : undefined}
           label={flow.stepIndex > 0 ? `Asset ${flow.context.assetTag}` : undefined}
-          placeholder={scanPlaceholder}
-          cameraModalTitle={cameraModalTitle}
-          cameraInstruction={cameraInstruction}
+          placeholder={workflowDone ? "Transfer complete — scan another asset tag." : ui.placeholder}
+          cameraModalTitle={ui.cameraModalTitle}
+          cameraInstruction={ui.instruction}
           scanStepAck={workflowDone ? null : flow.scanStepAck}
           workflowError={flow.error}
-          workflowSuccessMessage={
-            workflowDone
-              ? scanUxMode === "camera"
-                ? "Custody handoff recorded — details are in the banner below."
-                : "Custody handoff recorded — details are in the banner above."
-              : null
-          }
+          workflowSuccessMessage={workflowDone ? "Transfer saved — details are in the banner below." : null}
           stepIndex={flow.stepIndex}
           stepLabel={workflowDone ? undefined : ui.stepLabel}
           cameraSessionCapturedSteps={flow.capturedSteps}
           onScan={onScan}
         />
 
-        {scanUxMode === "keyboard" ? (
-          <TechScanCapturedSteps
-            items={flow.capturedSteps}
-            completedSession={workflowDone}
-            nextStepLabel={!workflowDone ? ui.stepLabel : null}
-          />
-        ) : null}
-
-        {scanUxMode === "keyboard" ? assetSummaryPanel : null}
-
-        {!flow.busy ? (
+        {onAssetTagStep && !flow.busy ? (
           <button
             type="button"
-            onClick={() => setScanUxMode((m) => (m === "keyboard" ? "camera" : "keyboard"))}
+            onClick={onToggleInputMethod}
             className="min-h-[48px] w-full touch-manipulation rounded-lg border-2 border-gray-300 bg-white px-4 py-3 text-base font-semibold text-gray-900 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2"
           >
-            {scanUxMode === "keyboard" ? "Use camera for this flow" : "Use manual entry instead"}
+            {mode === "manual" ? "Use camera for this flow" : "Use manual entry instead"}
           </button>
         ) : null}
 
-        {flow.lookupBusy && flow.stepIndex === 0 ? <ScanLoadingLine label="Looking up asset…" /> : null}
-        {flow.submitBusy ? <ScanLoadingLine label="Recording handoff…" /> : null}
+        <TechScanCapturedSteps
+          items={flow.capturedSteps}
+          completedSession={workflowDone}
+          nextStepLabel={!workflowDone ? ui.stepLabel : null}
+        />
 
         {!workflowDone && flow.stepIndex > 0 && !flow.busy ? (
           <button
@@ -175,6 +120,20 @@ export default function TechTransferPage() {
           </button>
         ) : null}
       </section>
+
+      <p className="text-xs leading-snug text-gray-500">
+        Transfer uses the existing backend transfer endpoint. Scan asset tag first, then receiver badge payload.
+      </p>
     </div>
   );
+}
+
+export default function TechTransferPage() {
+  const [mode, setMode] = useState<TransferWorkflowMode>("manual");
+
+  const onToggleInputMethod = useCallback(() => {
+    setMode((prev) => (prev === "manual" ? "camera" : "manual"));
+  }, []);
+
+  return <TransferFlowBody mode={mode} onToggleInputMethod={onToggleInputMethod} />;
 }

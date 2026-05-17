@@ -74,10 +74,10 @@ const LOC = {
   telecom: formatCompactLocationBarcode("Lab-Building-A", "Telecom-1", "T-01"),
 } as const;
 
-const deployBayB04U16 = formatDeployLocationBarcode("Lab-Building-A", "Bay-12", "B-04", "U16");
-const deployDockP02 = formatDeployLocationBarcode("Lab-Building-A", "Receiving", "DOCK-2", "P-02");
-const deployShelfRu = formatDeployLocationBarcode("Lab-Building-A", "Storage-1", "SHELF-3", "U08");
-const deployBuildingBC12 = formatDeployLocationBarcode("Lab-Building-B", "Computing-1", "C-12", "U22");
+const deployBayB04U16 = formatDeployLocationBarcode("Lab-Building-A", "Bay-12", "Aisle-3", "B-04", "U16");
+const deployDockP02 = formatDeployLocationBarcode("Lab-Building-A", "Receiving", "Aisle-1", "DOCK-2", "P-02");
+const deployShelfRu = formatDeployLocationBarcode("Lab-Building-A", "Storage-1", "Aisle-2", "SHELF-3", "U08");
+const deployBuildingBC12 = formatDeployLocationBarcode("Lab-Building-B", "Computing-1", "Aisle-1", "C-12", "U22");
 
 export function DevBarcodesClient() {
   return (

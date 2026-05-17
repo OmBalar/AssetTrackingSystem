@@ -5,6 +5,21 @@ import type { AssetClass } from "@/lib/types";
 /** Asset tag QR payload: `C1234567` */
 export const ASSET_TAG_PATTERN = /^C\d{7}$/;
 
+const ASSET_CLASS_VALUES = [
+  "instrument",
+  "compute",
+  "network",
+  "power",
+  "consumable_durable",
+] as const;
+
+type AssetClassValue = (typeof ASSET_CLASS_VALUES)[number];
+
+function normalizeAssetClass(raw: string): AssetClass | null {
+  const normalized = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return ASSET_CLASS_VALUES.includes(normalized as AssetClassValue) ? (normalized as AssetClass) : null;
+}
+
 /** Custodian badge QR: `tech-jane`, `manager-paul`, … */
 export const CUSTODIAN_BADGE_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+$/i;
 
@@ -41,12 +56,12 @@ export function looksLikeCompactLocationBarcode(raw: string): boolean {
   return parts.length === 3 && parts.every((p) => p.trim().length > 0);
 }
 
-/** Deploy compact QR — exactly four non-empty slash segments (SITE/ROOM/RACK/RU). */
+/** Deploy compact QR — exactly five non-empty slash segments (SITE/ROOM/ROW/RACK/RU). */
 export function looksLikeDeployLocationBarcode(raw: string): boolean {
   const t = raw.trim();
   if (!t || t.includes("|")) return false;
   const parts = t.split("/");
-  return parts.length === 4 && parts.every((p) => p.trim().length > 0);
+  return parts.length === 5 && parts.every((p) => p.trim().length > 0);
 }
 
 /** Receive step 2 — one QR encodes serial, manufacturer, model, and asset class. */
@@ -89,7 +104,14 @@ export function parseReceiveEquipmentQr(raw: string): ParsedReceiveEquipment {
   if (!isValidSerialPayload(serial)) {
     return { ok: false, error: SCAN_INVALID_SERIAL };
   }
-  return { ok: true, serial, manufacturer, model, asset_class: acRaw };
+  const assetClass = normalizeAssetClass(acRaw);
+  if (!assetClass) {
+    return {
+      ok: false,
+      error: `Asset class must be one of: ${ASSET_CLASS_VALUES.join(", ")}.`,
+    };
+  }
+  return { ok: true, serial, manufacturer, model, asset_class: assetClass };
 }
 
 export type ParsedReceiveAssetTypeField =
@@ -102,8 +124,15 @@ export function parseReceiveAssetTypeField(raw: string): ParsedReceiveAssetTypeF
   if (!t) {
     return {
       ok: false,
-      error: "Asset type required — enter a label for this equipment (any short description).",
+      error: "Asset type required — enter one of the supported categories.",
     };
   }
-  return { ok: true, asset_class: t };
+  const assetClass = normalizeAssetClass(t);
+  if (!assetClass) {
+    return {
+      ok: false,
+      error: `Asset type must be one of: ${ASSET_CLASS_VALUES.join(", ")}.`,
+    };
+  }
+  return { ok: true, asset_class: assetClass };
 }

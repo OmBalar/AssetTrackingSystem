@@ -470,18 +470,9 @@ export function ManagerReconcileDashboard() {
       <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
         <p className="font-medium">This report is not available right now</p>
         <p className="mt-1 text-amber-900/95">{error ?? ''}</p>
-        {showConfigHint ? (
-          <p className="mt-2 text-xs text-amber-900/90">
-            Most often this is a missing server token or the upstream API not running. Set{" "}
-            <code className="rounded bg-amber-100/80 px-1">API_TOKEN</code> in{" "}
-            <code className="rounded bg-amber-100/80 px-1">starter/.env</code>, restart Next.js, and confirm
-            the asset API is up.
-          </p>
-        ) : (
-          <p className="mt-2 text-xs text-amber-900/90">
-            The server returned an error. Try again shortly. If the problem persists, escalate to someone on-call.
-          </p>
-        )}
+        <p className="mt-2 text-xs text-amber-900/90">
+          The server returned an error. Try again shortly. If the problem persists, escalate to someone on-call.
+        </p>
       </div>
     );
   }

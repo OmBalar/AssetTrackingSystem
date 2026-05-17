@@ -167,7 +167,7 @@ function ReceiveFlowBody({ mode, onToggleInputMethod }: { mode: ReceiveWorkflowM
           details={assetSuccessDetailRows(receiveConfirm.asset)}
           capturedSteps={receiveConfirm.capturedSteps}
           persistHint="Expand for full details — hides when you scan the next asset tag (e.g. C0123456)."
-          placement={mode === "camera" ? "bottom" : "top"}
+          placement={mode === "camera" ? "bottom" : "bottom"}
         />
       ) : null}
     </div>

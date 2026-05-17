@@ -262,9 +262,9 @@ export function createReceiveWorkflowDefinition(mode: ReceiveWorkflowMode): Scan
     type: "receive_asset_type",
     ui: {
       stepLabel: "Asset type",
-      placeholder: "e.g. instrument, laptop, storage array — Enter",
+      placeholder: "e.g. instrument, compute, network, power, consumable_durable — Enter",
       cameraModalTitle: "Asset type",
-      instruction: "Type any asset type or category label that describes this equipment.",
+      instruction: "Type one of the supported asset categories for this equipment.",
     },
     async process(raw) {
       const parsed = parseReceiveAssetTypeField(raw);
@@ -473,10 +473,8 @@ function deployBlockedReason(asset: Asset): string | null {
 }
 
 function transferBlockedReason(asset: Asset): string | null {
-  if (asset.state === "disposed" || asset.state === "unreceived") {
-    return `State is ${humanizeState(asset.state)} — can't transfer custody.`;
-  }
-  return null;
+  if (asset.state === "received" || asset.state === "stored" || asset.state === "in_service") return null;
+  return `State is ${humanizeState(asset.state)} — transfer only when received, stored, or in service.`;
 }
 
 type DeployMocksErrorBody = {
@@ -752,13 +750,13 @@ export function createDeployWorkflowDefinition(mode: DeployWorkflowMode): ScanFl
           patch: {
             assetTag: tag,
             asset: fetched,
-            deploy: { site: "", room: "", rack: "", ru: "" },
+            deploy: { site: "", room: "", row: "", rack: "", ru: "" },
           },
           capture: { label: "Asset tag", value: tag },
           ack:
             mode === "camera"
               ? `OK · ${tag} verified — scan deploy location QR (${DEPLOY_COMPACT_LOCATION_BARCODE_LABEL}).`
-              : `OK · ${tag} verified — enter site, room, rack, and RU on separate screens.`,
+              : `OK · ${tag} verified — enter site, room, row, rack, and RU on separate screens.`,
         };
       } catch (e) {
         if (e instanceof ApiError) {
@@ -787,12 +785,13 @@ export function createDeployWorkflowDefinition(mode: DeployWorkflowMode): ScanFl
           const hint = formatDeployLocationBarcode(
             three.location.site,
             three.location.room ?? "",
+            three.location.row ?? "",
             three.location.rack ?? "",
             "U16",
           );
           return {
             outcome: "error",
-            message: `That payload is ${COMPACT_LOCATION_BARCODE_LABEL} (three segments) for receive/store. Deploy needs ${DEPLOY_COMPACT_LOCATION_BARCODE_LABEL} — add the RU as a fourth segment. Example: ${hint}`,
+            message: `That payload is ${COMPACT_LOCATION_BARCODE_LABEL} (three segments) for receive/store. Deploy needs ${DEPLOY_COMPACT_LOCATION_BARCODE_LABEL} — add the row and RU. Example: ${hint}`,
             bumpInput: true,
           };
         }
@@ -810,6 +809,7 @@ export function createDeployWorkflowDefinition(mode: DeployWorkflowMode): ScanFl
       const nextDeploy = {
         site: loc.site.trim(),
         room: (loc.room ?? "").trim(),
+        row: (loc.row ?? "").trim(),
         rack: (loc.rack ?? "").trim(),
         ru: (loc.ru ?? "").trim(),
       };
@@ -818,7 +818,7 @@ export function createDeployWorkflowDefinition(mode: DeployWorkflowMode): ScanFl
         patch: { deploy: nextDeploy },
         capture: {
           label: deployLocationCompactStep.ui.stepLabel,
-          value: formatDeployLocationBarcode(nextDeploy.site, nextDeploy.room, nextDeploy.rack, nextDeploy.ru),
+          value: formatDeployLocationBarcode(nextDeploy.site, nextDeploy.room, nextDeploy.row, nextDeploy.rack, nextDeploy.ru),
         },
       };
     },
@@ -837,7 +837,7 @@ export function createDeployWorkflowDefinition(mode: DeployWorkflowMode): ScanFl
       if (err) return { outcome: "error", message: err, bumpInput: true };
       return {
         outcome: "advance",
-        patch: { deploy: { site: raw.trim(), room: "", rack: "", ru: "" } },
+        patch: { deploy: { site: raw.trim(), row: "", room: "", rack: "", ru: "" } },
         capture: { label: manualDeploySiteStep.ui.stepLabel, value: raw.trim() },
         ack: "OK · site recorded — enter room.",
       };
@@ -850,7 +850,7 @@ export function createDeployWorkflowDefinition(mode: DeployWorkflowMode): ScanFl
       stepLabel: "Bay / room",
       placeholder: "Room only (no slashes), Enter",
       cameraModalTitle: "Room / bay",
-      instruction: `Type the room only (part 2 of 4 — matches ${DEPLOY_COMPACT_LOCATION_BARCODE_LABEL}). No slashes.`,
+      instruction: `Type the room only (part 2 of 5 — matches ${DEPLOY_COMPACT_LOCATION_BARCODE_LABEL}). No slashes.`,
     },
     async process(raw, ctx) {
       const err = manualLocationSegmentPartError("room", raw);
@@ -862,7 +862,30 @@ export function createDeployWorkflowDefinition(mode: DeployWorkflowMode): ScanFl
         outcome: "advance",
         patch: { deploy: { ...ctx.deploy, room: raw.trim() } },
         capture: { label: manualDeployRoomStep.ui.stepLabel, value: raw.trim() },
-        ack: "OK · room recorded — enter rack ID.",
+        ack: "OK · room recorded — enter row.",
+      };
+    },
+  };
+
+  const manualDeployRowStep: ScanFlowStepDefinition = {
+    type: "deploy_row",
+    ui: {
+      stepLabel: "Row / aisle",
+      placeholder: "Row only (no slashes), Enter",
+      cameraModalTitle: "Row / aisle",
+      instruction: `Type the row only (part 3 of 5 — matches ${DEPLOY_COMPACT_LOCATION_BARCODE_LABEL}). No slashes.`,
+    },
+    async process(raw, ctx) {
+      const err = manualLocationSegmentPartError("row", raw);
+      if (err) return { outcome: "error", message: err, bumpInput: true };
+      if (!ctx.deploy.site.trim() || !ctx.deploy.room.trim()) {
+        return { outcome: "error", message: "Enter site and room first — restart flow if needed.", bumpInput: true };
+      }
+      return {
+        outcome: "advance",
+        patch: { deploy: { ...ctx.deploy, row: raw.trim() } },
+        capture: { label: manualDeployRowStep.ui.stepLabel, value: raw.trim() },
+        ack: "OK · row recorded — enter rack ID.",
       };
     },
   };
@@ -873,13 +896,13 @@ export function createDeployWorkflowDefinition(mode: DeployWorkflowMode): ScanFl
       stepLabel: "Rack (cabinet) ID",
       placeholder: "Rack ID only (no slashes), Enter",
       cameraModalTitle: "Rack ID",
-      instruction: `Type the rack ID only (part 3 of 4). No slashes.`,
+      instruction: `Type the rack ID only (part 4 of 5). No slashes.`,
     },
     async process(raw, ctx) {
       const err = manualLocationSegmentPartError("rack", raw);
       if (err) return { outcome: "error", message: err, bumpInput: true };
-      if (!ctx.deploy.site.trim() || !ctx.deploy.room.trim()) {
-        return { outcome: "error", message: "Enter site and room first — restart flow if needed.", bumpInput: true };
+      if (!ctx.deploy.site.trim() || !ctx.deploy.room.trim() || !ctx.deploy.row.trim()) {
+        return { outcome: "error", message: "Enter site, room, and row first — restart flow if needed.", bumpInput: true };
       }
       return {
         outcome: "advance",
@@ -896,13 +919,13 @@ export function createDeployWorkflowDefinition(mode: DeployWorkflowMode): ScanFl
       stepLabel: "RU / slot",
       placeholder: "RU only (e.g. U16, P-02), Enter",
       cameraModalTitle: "RU / slot",
-      instruction: "Type the rack unit only (part 4 of 4). Enter submits deploy — no slashes.",
+      instruction: "Type the rack unit only (part 5 of 5). Enter submits deploy — no slashes.",
     },
     async process(raw, ctx) {
       const err = manualLocationSegmentPartError("RU / slot", raw);
       if (err) return { outcome: "error", message: err, bumpInput: true };
-      if (!ctx.deploy.site.trim() || !ctx.deploy.room.trim() || !ctx.deploy.rack.trim()) {
-        return { outcome: "error", message: "Enter site, room, and rack first — restart flow if needed.", bumpInput: true };
+      if (!ctx.deploy.site.trim() || !ctx.deploy.room.trim() || !ctx.deploy.row.trim() || !ctx.deploy.rack.trim()) {
+        return { outcome: "error", message: "Enter site, room, row, and rack first.", bumpInput: true };
       }
       const ru = raw.trim();
       const nextDeploy = { ...ctx.deploy, ru };
@@ -911,7 +934,7 @@ export function createDeployWorkflowDefinition(mode: DeployWorkflowMode): ScanFl
         patch: { deploy: nextDeploy },
         capture: {
           label: manualDeployRuStep.ui.stepLabel,
-          value: `${ru} · ${formatDeployLocationBarcode(nextDeploy.site, nextDeploy.room, nextDeploy.rack, ru)}`,
+          value: `${ru} · ${formatDeployLocationBarcode(nextDeploy.site, nextDeploy.row, nextDeploy.room, nextDeploy.rack, ru)}`,
         },
       };
     },
@@ -920,7 +943,7 @@ export function createDeployWorkflowDefinition(mode: DeployWorkflowMode): ScanFl
   const steps: ScanFlowStepDefinition[] =
     mode === "camera"
       ? [tagStep, deployLocationCompactStep]
-      : [tagStep, manualDeploySiteStep, manualDeployRoomStep, manualDeployRackStep, manualDeployRuStep];
+      : [tagStep, manualDeploySiteStep, manualDeployRoomStep, manualDeployRowStep, manualDeployRackStep, manualDeployRuStep];
 
   return {
     id: mode === "camera" ? "deploy-camera" : "deploy-manual",
@@ -929,7 +952,7 @@ export function createDeployWorkflowDefinition(mode: DeployWorkflowMode): ScanFl
       const loc: Location = {
         site: ctx.deploy.site.trim(),
         room: ctx.deploy.room.trim(),
-        row: null,
+        row: ctx.deploy.row.trim(),
         rack: ctx.deploy.rack.trim(),
         ru: ctx.deploy.ru.trim(),
       };
@@ -972,97 +995,96 @@ export function createDeployWorkflowDefinition(mode: DeployWorkflowMode): ScanFl
   };
 }
 
-/** Transfer: asset_tag → receiver badge → POST transfer */
+
 export function createTransferWorkflowDefinition(operatorUserId: string): ScanFlowDefinition {
-  const steps: ScanFlowStepDefinition[] = [
-    {
-      type: "asset_tag",
-      ui: {
-        stepLabel: "Asset tag",
-        placeholder: "(C + 7 digits), Enter",
-        cameraModalTitle: "Asset tag QR",
-        instruction: "Scan the asset tag QR changing custody.",
-      },
-      async process(raw, _ctx, env) {
-        const tag = raw.trim().toUpperCase();
-        if (!/^C\d{7}$/.test(tag)) {
-          return { outcome: "error", message: SCAN_INVALID_TAG, bumpInput: true };
-        }
-        env.setLookupBusy(true);
-        try {
-          const fetched = await api.assets.get(tag);
-          const blocked = transferBlockedReason(fetched);
-          if (blocked) {
-            return { outcome: "error", message: blocked, bumpInput: true };
-          }
-          return {
-            outcome: "advance",
-            patch: { assetTag: tag, asset: fetched },
-            capture: { label: "Asset tag", value: tag },
-            ack: `OK · ${tag} verified — scan receiver badge.`,
-          };
-        } catch (e) {
-          if (e instanceof ApiError) {
-            return { outcome: "error", message: formatApiErrorForUser(e), bumpInput: true };
-          }
-          return { outcome: "error", message: SCAN_NETWORK_DOWN, bumpInput: true };
-        } finally {
-          env.setLookupBusy(false);
-        }
-      },
+  const assetTagStep: ScanFlowStepDefinition = {
+    type: "asset_tag",
+    ui: {
+      stepLabel: "Asset tag",
+      placeholder: "(C + 7 digits), Enter",
+      cameraModalTitle: "Asset tag QR",
+      instruction: "Scan the asset tag QR to transfer custody.",
     },
-    {
-      type: "custodian_badge",
-      ui: {
-        stepLabel: "Receiving badge",
-        placeholder: "Custodian QR payload (tech-jane …), Enter",
-        cameraModalTitle: "Custodian badge QR",
-        instruction: "Scan the receiver’s badge QR (payload like tech-jane or manager-paul).",
-      },
-      async process(raw, ctx) {
-        const badge = raw.trim();
-        if (!badge) return { outcome: "noop" };
-        if (!isValidCustodianBadgePayload(badge)) {
-          return { outcome: "error", message: SCAN_INVALID_CUSTODIAN, bumpInput: true };
-        }
-        if (!ctx.asset) {
-          return { outcome: "error", message: "No asset — scan tag first.", bumpInput: true };
-        }
-        if (badge === ctx.asset.custodian) {
-          return {
-            outcome: "error",
-            message: `Already custodian (${ctx.asset.custodian}) — scan the receiver.`,
-            bumpInput: true,
-          };
+    async process(raw, _ctx, env) {
+      const tag = raw.trim().toUpperCase();
+      if (!/^C\d{7}$/.test(tag)) {
+        return { outcome: "error", message: SCAN_INVALID_TAG, bumpInput: true };
+      }
+      env.setLookupBusy(true);
+      try {
+        const asset = await api.assets.get(tag);
+        const blocked = transferBlockedReason(asset);
+        if (blocked) {
+          return { outcome: "error", message: blocked, bumpInput: true };
         }
         return {
-          outcome: "complete",
-          patch: { receiverId: badge },
-          capture: { label: "Receiving badge (submit)", value: badge },
+          outcome: "advance",
+          patch: { assetTag: tag, asset },
+          capture: { label: "Asset tag", value: tag },
+          ack: `OK · ${tag} verified — scan receiver badge.`,
         };
-      },
+      } catch (e) {
+        if (e instanceof ApiError) {
+          return { outcome: "error", message: formatApiErrorForUser(e), bumpInput: true };
+        }
+        return { outcome: "error", message: SCAN_NETWORK_DOWN, bumpInput: true };
+      } finally {
+        env.setLookupBusy(false);
+      }
     },
-  ];
+  };
+
+  const receiverBadgeStep: ScanFlowStepDefinition = {
+    type: "custodian_badge",
+    ui: {
+      stepLabel: "Receiver badge",
+      placeholder: "Receiver badge payload, Enter",
+      cameraModalTitle: "Receiver badge QR",
+      instruction: "Scan the receiving custodian badge QR.",
+    },
+    async process(raw, ctx) {
+      const badge = raw.trim();
+      if (!badge) return { outcome: "noop" };
+      if (!isValidCustodianBadgePayload(badge)) {
+        return { outcome: "error", message: SCAN_INVALID_CUSTODIAN, bumpInput: true };
+      }
+      if (!ctx.asset) {
+        return { outcome: "error", message: "No asset — scan tag first.", bumpInput: true };
+      }
+      if (badge === ctx.asset.custodian) {
+        return {
+          outcome: "error",
+          message: `Already custodian (${ctx.asset.custodian}) — scan receiver.`,
+          bumpInput: true,
+        };
+      }
+      return {
+        outcome: "complete",
+        patch: { receiverId: badge },
+        capture: { label: "Receiver badge", value: badge },
+      };
+    },
+  };
 
   return {
     id: "transfer",
-    steps,
+    steps: [assetTagStep, receiverBadgeStep],
     async onComplete(ctx): Promise<ScanFlowCompleteResult> {
-      const toCustodian = ctx.receiverId.trim();
-      if (!toCustodian) {
-        return { ok: false, message: "Badge empty — scan receiver ID, Enter." };
-      }
       if (!ctx.asset) {
-        return { ok: false, message: "No asset — scan tag first." };
+        return { ok: false, message: "No asset found — start again with its tag." };
+      }
+      const receiverId = ctx.receiverId?.trim() ?? "";
+      if (!receiverId) {
+        return { ok: false, message: "Receiver badge missing — scan receiver badge." };
       }
       try {
-        const updated = await api.scans.transfer({
+        const transferred = await api.scans.transfer({
           asset_tag: ctx.assetTag,
-          to_custodian: toCustodian,
+          to_custodian: receiverId,
           user_id: operatorUserId,
-          scan_payload: `TRANSFER|${ctx.assetTag}|${toCustodian}`,
+          scan_payload: `TRANSFER|${ctx.assetTag}|${receiverId}`,
         });
-        return { ok: true, payload: updated };
+        return { ok: true, payload: { asset: transferred } };
       } catch (e) {
         if (e instanceof ApiError) {
           return { ok: false, message: formatApiErrorForUser(e) };

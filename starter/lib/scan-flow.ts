@@ -42,10 +42,10 @@ export const COMPACT_LOCATION_BARCODE_LABEL = "SITE/ROOM/RACK" as const;
 
 export const COMPACT_LOCATION_BARCODE_EXAMPLE = "Lab-Building-A/Receiving/DOCK-2" as const;
 
-/** Deploy-only compact barcode: four slash-separated segments (includes RU). */
-export const DEPLOY_COMPACT_LOCATION_BARCODE_LABEL = "SITE/ROOM/RACK/RU" as const;
+/** Deploy-only compact barcode: five slash-separated segments (includes Row and RU). */
+export const DEPLOY_COMPACT_LOCATION_BARCODE_LABEL = "SITE/ROOM/ROW/RACK/RU" as const;
 
-export const DEPLOY_COMPACT_LOCATION_BARCODE_EXAMPLE = "Lab-Building-A/Bay-12/B-04/U16" as const;
+export const DEPLOY_COMPACT_LOCATION_BARCODE_EXAMPLE = "Lab-Building-A/Bay-12/Row-A/B-04/U16" as const;
 
 /** Builds a receive/store compact location barcode value (slash-separated, matches {@link parseCompactLocationBarcode}). */
 export function formatCompactLocationBarcode(site: string, room: string, rack: string): string {
@@ -53,8 +53,8 @@ export function formatCompactLocationBarcode(site: string, room: string, rack: s
 }
 
 /** Builds deploy compact location barcode value (matches {@link parseDeployLocationBarcode}). */
-export function formatDeployLocationBarcode(site: string, room: string, rack: string, ru: string): string {
-  return `${site.trim()}/${room.trim()}/${rack.trim()}/${ru.trim()}`;
+export function formatDeployLocationBarcode(site: string, room: string, row: string, rack: string, ru: string): string {
+  return `${site.trim()}/${room.trim()}/${row.trim()}/${rack.trim()}/${ru.trim()}`;
 }
 
 /**
@@ -110,7 +110,7 @@ export function parseCompactLocationBarcode(raw: string): ParsedCompactLocation 
 /**
  * Parses deploy rack location from one barcode (camera / wedge paste).
  *
- * Format: exactly `SITE/ROOM/RACK/RU` (slashes only, no `|`).
+ * Format: exactly `SITE/ROOM/ROW/RACK/RU` (slashes only, no `|`).
  */
 export function parseDeployLocationBarcode(raw: string): ParsedCompactLocation {
   const trimmed = raw.trim();
@@ -126,22 +126,23 @@ export function parseDeployLocationBarcode(raw: string): ParsedCompactLocation {
   }
 
   const parts = trimmed.split("/");
-  if (parts.length !== 4) {
+  if (parts.length !== 5) {
     return {
       ok: false,
-      error: `Deploy location must be ${DEPLOY_COMPACT_LOCATION_BARCODE_LABEL} (four segments). Example: ${DEPLOY_COMPACT_LOCATION_BARCODE_EXAMPLE}.`,
+      error: `Deploy location must be ${DEPLOY_COMPACT_LOCATION_BARCODE_LABEL} (five segments). Example: ${DEPLOY_COMPACT_LOCATION_BARCODE_EXAMPLE}.`,
     };
   }
 
   const site = parts[0]!.trim();
   const room = parts[1]!.trim();
-  const rack = parts[2]!.trim();
-  const ru = parts[3]!.trim();
+  const row = parts[2]!.trim();
+  const rack = parts[3]!.trim();
+  const ru = parts[4]!.trim();
 
-  if (!site || !room || !rack || !ru) {
+  if (!site || !room || !row || !rack || !ru) {
     return {
       ok: false,
-      error: `Each of site, room, rack, and RU must be non-empty. Example: ${DEPLOY_COMPACT_LOCATION_BARCODE_EXAMPLE}.`,
+      error: `Each of site, room, row, rack, and RU must be non-empty. Example: ${DEPLOY_COMPACT_LOCATION_BARCODE_EXAMPLE}.`,
     };
   }
 
@@ -150,7 +151,7 @@ export function parseDeployLocationBarcode(raw: string): ParsedCompactLocation {
     location: {
       site,
       room,
-      row: null,
+      row,
       rack,
       ru,
     },

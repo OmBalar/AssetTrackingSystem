@@ -58,16 +58,14 @@ function StoreFlowBody({ mode, onToggleInputMethod }: { mode: StoreWorkflowMode;
         details={assetSuccessDetailRows(storedAsset)}
         capturedSteps={flow.capturedSteps}
         persistHint="Expand for full details — hides when you scan the next asset tag (e.g. C0123456)."
-        placement={mode === "camera" ? "bottom" : "top"}
+        placement={mode === "camera" ? "bottom" : "bottom"}
       />
     ) : null;
 
   const pageVerticalInset =
-    successRibbon == null
-      ? " pb-[max(1.25rem,env(safe-area-inset-bottom))]"
-      : mode === "camera"
-        ? " pb-[calc(6rem+env(safe-area-inset-bottom))]"
-        : " pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[5.25rem]";
+  successRibbon == null
+    ? " pb-[max(1.25rem,env(safe-area-inset-bottom))]"
+    : " pb-[calc(6rem+env(safe-area-inset-bottom))]";
 
   const assetSummaryPanel =
     !workflowDone && flow.context.asset && flow.stepIndex > 0 ? (

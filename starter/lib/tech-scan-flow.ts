@@ -18,7 +18,7 @@ export type TechScanFlowContext = {
   manualLocRoom: string;
   manualLocRack: string;
   asset: Asset | null;
-  deploy: { site: string; room: string; rack: string; ru: string };
+  deploy: { site: string; row: string; room: string; rack: string; ru: string };
   receiverId: string;
 };
 

@@ -39,8 +39,8 @@ describe("scan-format-validation", () => {
     expect(looksLikeCompactLocationBarcode("Lab-Building-A")).toBe(false);
   });
 
-  it("detects deploy location QR payloads (four segments)", () => {
-    const v = formatDeployLocationBarcode("Lab-Building-A", "Bay-12", "B-04", "U16");
+  it("detects deploy location QR payloads (five segments)", () => {
+    const v = formatDeployLocationBarcode("Lab-Building-A", "Bay-12", "Aisle-3", "B-04", "U16");
     expect(isValidDeployLocationPayload(v)).toBe(true);
     expect(parseDeployLocationBarcode(v).ok).toBe(true);
     expect(looksLikeDeployLocationBarcode(v)).toBe(true);
@@ -76,12 +76,11 @@ describe("scan-format-validation", () => {
     expect(r.ok).toBe(false);
   });
 
-  it("parses manual receive asset type field (any non-empty label)", () => {
+  it("parses manual receive asset type field into supported categories", () => {
     expect(parseReceiveAssetTypeField("instrument")).toEqual({ ok: true, asset_class: "instrument" });
-    expect(parseReceiveAssetTypeField("COMPUTE")).toEqual({ ok: true, asset_class: "COMPUTE" });
-    expect(parseReceiveAssetTypeField("network")).toEqual({ ok: true, asset_class: "network" });
-    expect(parseReceiveAssetTypeField("laptop")).toEqual({ ok: true, asset_class: "laptop" });
-    expect(parseReceiveAssetTypeField("  Custom-class  ")).toEqual({ ok: true, asset_class: "Custom-class" });
+    expect(parseReceiveAssetTypeField("COMPUTE")).toEqual({ ok: true, asset_class: "compute" });
+    expect(parseReceiveAssetTypeField("consumable durable")).toEqual({ ok: true, asset_class: "consumable_durable" });
+    expect(parseReceiveAssetTypeField("storage array")).toEqual({ ok: false, error: expect.any(String) });
   });
 
   it("rejects empty asset type field", () => {

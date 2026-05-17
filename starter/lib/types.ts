@@ -1,5 +1,10 @@
-/** Asset classification label — free text (not restricted to a fixed vocabulary). */
-export type AssetClass = string;
+/** Asset classification label — one of the API-supported categories. */
+export type AssetClass =
+  | "instrument"
+  | "compute"
+  | "network"
+  | "power"
+  | "consumable_durable";
 
 export type AssetState =
   | "unreceived"
