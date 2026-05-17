@@ -40,7 +40,7 @@ function serialConflictMessage(assetTag: string, registeredSerial: string, scann
   const scanned = scannedSerial.trim();
   const prefix = tag.length ? `Asset ${tag}. ` : "";
   const onFile = registered.length ? registered : "(no serial on record in ops)";
-  return `${prefix}On-file serial (ops): ${onFile}. You scanned: ${scanned}. Use the equipment that matches the on-file serial.`;
+  return `Serial mismatch. On-file serial: ${onFile}. You scanned: ${scanned}. Use the same serial that matches the on-file serial.`;
 }
 
 /** One segment of SITE/ROOM/RACK for manual entry — no slashes (one part per step). QR flow uses {@link parseCompactLocationBarcode} instead. */
@@ -104,7 +104,7 @@ export function createReceiveWorkflowDefinition(mode: ReceiveWorkflowMode): Scan
       placeholder: "Equipment QR: EQ:serial|mfr|model|type — Enter",
       cameraModalTitle: "Equipment QR",
       instruction:
-        "Scan the equipment QR: serial, manufacturer, model, and asset type in one payload (EQ:… with pipes — see dev barcodes).",
+        "Scan the equipment QR: serial, manufacturer, model, and asset type.",
     },
     async process(raw, ctx, env) {
       const tag = ctx.assetTag.trim();

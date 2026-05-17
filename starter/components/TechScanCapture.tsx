@@ -114,9 +114,7 @@ export function TechScanCapture({
   }, [hideCameraOption]);
 
   const dismissCamera = useCallback(() => {
-    setCameraOverlayOpen(false);
-    onCameraSessionDismissed?.();
-    queueMicrotask(() => scheduleFocus(inputRef.current));
+    window.location.reload();
   }, [onCameraSessionDismissed]);
 
   const switchManual = useCallback(() => {

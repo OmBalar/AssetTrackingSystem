@@ -35,7 +35,7 @@ export function ScanWorkflowStatus({
         >
           <p className="font-medium">{error}</p>
           <p className="mt-1 text-xs text-amber-900/90">
-            Wrong QR, invalid format, or mismatch — fix it and scan again.
+            Incorrect label. Please ensure the label is correct and try again.
           </p>
         </div>
       ) : null}

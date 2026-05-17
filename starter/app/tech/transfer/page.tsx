@@ -120,10 +120,6 @@ function TransferFlowBody({
           </button>
         ) : null}
       </section>
-
-      <p className="text-xs leading-snug text-gray-500">
-        Transfer uses the existing backend transfer endpoint. Scan asset tag first, then receiver badge payload.
-      </p>
     </div>
   );
 }
