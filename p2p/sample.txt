@@ -1,0 +1,5 @@
+This is a sample file for the COE768 P2P project.
+It is larger than one 100-byte content packet so the TCP download
+has to send more than one write. Line 3: ABCDEFGHIJKLMNOPQRSTUVWXYZ.
+Line 4: The quick brown fox jumps over the lazy dog.
+Line 5: End of sample content.
